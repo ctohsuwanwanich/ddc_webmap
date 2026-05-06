@@ -70,11 +70,11 @@ sequential ramp:
 
 | Class | Range | Hex |
 |---|---|---|
-| Very low | 0–1 projects | `#F0F9E8` |
-| Low | 2–4 projects | `#BAE4BC` |
-| Moderate | 5–7 projects | `#7BCCC4` |
-| High | 8–11 projects | `#43A2CA` |
-| Very high | 12+ projects | `#9868AC` |
+| Very low | 0 - 0.42 Projects | `#F0F9E8` |
+| Low | 0.42 - 3.29 Projects | `#BAE4BC` |
+| Moderate | 3.29 - 23.16 Projects | `#7BCCC4` |
+| High | 23.16 - 160.59 Projects| `#43A2CA` |
+| Very high | More than 160.59 Projects | `#9868AC` |
 
 Block outlines are 0.1 pt — **grey (`#9e9e9e`) on light fills**, **white
 (`#ffffff`) on dark fills** (per spec).
