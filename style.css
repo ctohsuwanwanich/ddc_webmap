@@ -5,13 +5,13 @@
 
 :root {
   /* Palette — water-management complementary
-     deep harbor teal ↔ warm clay accents on warm paper */
-  --paper:        #f6f1e8;       /* warm paper background */
-  --paper-tint:   #eee6d6;       /* slightly deeper for cards */
+     deep harbor teal  */
+  --paper:        #F5FBFF;       /* light blue background */
+  --paper-tint:   #BDD5E7;       /* slightly deeper for cards */
   --ink:          #1a2a33;       /* primary text */
   --ink-soft:     #45525a;       /* secondary text */
   --ink-faint:    #8b8378;       /* tertiary / hint */
-  --rule:         #c9bfae;       /* hairline divider */
+  --rule:         #9ABDDC;       /* hairline divider */
 
   --teal:         #14525c;       /* primary brand */
   --teal-deep:    #0c343b;
