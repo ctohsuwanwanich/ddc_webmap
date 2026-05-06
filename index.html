@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Opportunities for Integrated Wastewater Management — Jamaica Bay, NYC</title>
+
+  <!-- Mapbox GL JS -->
+  <link href="https://api.mapbox.com/mapbox-gl-js/v3.20.0/mapbox-gl.css" rel="stylesheet">
+  <script src="https://api.mapbox.com/mapbox-gl-js/v3.20.0/mapbox-gl.js"></script>
+
+  <!-- Editorial typography:
+       Source Serif 4 (display serif, water/civic feel)
+       + Inter Tight (workhorse sans for UI) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,300;8..60,400;8..60,500;8..60,600;8..60,700&family=Inter+Tight:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet" />
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+  <!-- =======================================================
+       MAP CONTAINER
+       ======================================================= -->
+  <div id="map" aria-label="Interactive map of Jamaica Bay capital projects"></div>
+
+  <!-- =======================================================
+       HEADER / TITLE BLOCK (top-left)
+       ======================================================= -->
+  <header class="title-block" id="titleBlock">
+    <div class="title-block__eyebrow">
+      <span class="dot"></span>
+      <span>Town &amp; Gown NYC · DDC</span>
+    </div>
+    <h1 class="title-block__title">Opportunities for<br />Integrated<br />Wastewater Management</h1>
+    <p class="title-block__subtitle">Jamaica Bay, New York City</p>
+    <p class="title-block__desc">
+      A spatial reading of capital infrastructure projects across the Jamaica
+      Bay watershed of work commissioned by <strong>DEP</strong>, <strong>DDC</strong>, <strong>DOT</strong>, and
+      <strong>DPR</strong>. Where might integrated water management consolidate effort, budget, and resilience benefit?
+    </p>
+
+    <div class="title-block__cta">
+      <span class="cta-arrow">↳</span>
+      <span>Hover projects for details. Use the time slider to filter by completion year.</span>
+    </div>
+
+    <button class="title-block__toggle" id="titleToggle" aria-label="Collapse panel">
+      <span class="toggle-icon">—</span>
+    </button>
+  </header>
+
+  <!-- =======================================================
+       FLOATING POPUP PANEL (follows cursor)
+       ======================================================= -->
+  <aside class="popup-panel is-fixed is-empty" id="popupPanel" aria-live="polite">
+    <div class="popup-panel__inner">
+      <div class="popup-panel__placeholder" id="popupPlaceholder">
+        <div class="placeholder-mark">◐</div>
+        <p class="placeholder-title">Investigate the watershed</p>
+        <p class="placeholder-text">
+          Hover any project marker, line, or block to read about agency,
+          completion date, and infrastructure concentration.
+        </p>
+      </div>
+      <div class="popup-panel__content" id="popupContent" hidden></div>
+    </div>
+  </aside>
+
+  <!-- =======================================================
+       LEGEND / LAYER CONTROL (bottom-left)
+       ======================================================= -->
+  <section class="legend" id="legend">
+    <header class="legend__header">
+      <h2>Legend</h2>
+      <span class="legend__hint">check to toggle</span>
+    </header>
+
+    <!-- Capital project layers, classified by managing agency -->
+    <div class="legend__group">
+      <p class="legend__group-title">Capital Projects · by managing agency</p>
+      <div class="legend__layers">
+        <label class="layer-toggle is-active">
+          <input type="checkbox" checked data-layer="pts">
+          <span class="layer-toggle__swatch swatch-points"></span>
+          <span class="layer-toggle__label">Points</span>
+        </label>
+        <label class="layer-toggle is-active">
+          <input type="checkbox" checked data-layer="line">
+          <span class="layer-toggle__swatch swatch-lines"></span>
+          <span class="layer-toggle__label">Lines</span>
+        </label>
+        <label class="layer-toggle is-active">
+          <input type="checkbox" checked data-layer="polygon">
+          <span class="layer-toggle__swatch swatch-polygons"></span>
+          <span class="layer-toggle__label">Polygons</span>
+        </label>
+      </div>
+
+      <!-- Agency color key -->
+      <div class="legend__agencies">
+        <span class="agency-chip" data-agency="DEP"><i style="background:#1d4e89"></i>DEP</span>
+        <span class="agency-chip" data-agency="DOT"><i style="background:#c97b1f"></i>DOT</span>
+        <span class="agency-chip" data-agency="DDC"><i style="background:#5b6770"></i>DDC</span>
+        <span class="agency-chip" data-agency="DPR"><i style="background:#5a8a3a"></i>DPR</span>
+      </div>
+    </div>
+
+    <!-- Block-level concentration -->
+    <div class="legend__group">
+      <p class="legend__group-title">Capital Infrastructure Concentration · by block</p>
+      <div class="legend__layers">
+        <label class="layer-toggle is-active">
+          <input type="checkbox" checked data-layer="blocks">
+          <span class="layer-toggle__swatch swatch-blocks-gradient"></span>
+          <span class="layer-toggle__label">Project count (block)</span>
+        </label>
+      </div>
+      <!-- Concentration ramp -->
+      <div class="legend__ramp" id="blockRamp">
+        <div class="ramp-bar">
+          <span class="ramp-step" style="background:#F0F9E8;border-color:#bdbdbd"></span>
+          <span class="ramp-step" style="background:#BAE4BC;border-color:#bdbdbd"></span>
+          <span class="ramp-step" style="background:#7BCCC4;border-color:#bdbdbd"></span>
+          <span class="ramp-step" style="background:#43A2CA;color:#fff;border-color:#fff"></span>
+          <span class="ramp-step" style="background:#9868AC;color:#fff;border-color:#fff"></span>
+        </div>
+        <div class="ramp-axis">
+          <span>fewer projects</span>
+          <span>greater concentration</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Boundary (always visible) -->
+    <div class="legend__group">
+      <div class="legend__layers">
+        <div class="layer-toggle is-active layer-toggle--static">
+          <span class="layer-toggle__swatch swatch-boundary"></span>
+          <span class="layer-toggle__label">Jamaica Bay study area</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =======================================================
+       TIME SLIDER (bottom-center) — filter by completion date
+       ======================================================= -->
+  <section class="time-slider" id="timeSlider" aria-label="Filter projects by completion year">
+    <header class="time-slider__header">
+      <h3>Project Completion Year</h3>
+      <span class="time-slider__readout" id="timeReadout">All years</span>
+    </header>
+    <div class="time-slider__controls">
+      <button class="time-slider__btn" id="timeReset" type="button">All</button>
+      <button class="time-slider__btn time-slider__btn--play" id="timePlay" type="button" aria-label="Play through years">
+        <span id="playIcon">▶</span>
+      </button>
+      <input type="range" id="timeRange" min="2018" max="2028" value="2028" step="1" />
+      <div class="time-slider__ticks" id="timeTicks"></div>
+    </div>
+  </section>
+
+  <!-- =======================================================
+       CITATION BLOCK (bottom-right)
+       ======================================================= -->
+  <footer class="citation" id="citation">
+    <div class="citation__rule"></div>
+    <p class="citation__label">Sources &amp; Data</p>
+    <p class="citation__text">
+      <strong>NYC Open Data</strong> — Borough Boundaries; DEP Green
+      Infrastructure Point Layer; DPR Capital Project Tracker.
+    </p>
+    <p class="citation__text">
+      <strong>NYU UDS</strong> — Jamaica Bay Study Area boundary.
+      <strong>NYC Capital Projects Dashboard</strong> — citywide budget &amp; schedule.
+    </p>
+  </footer>
+
+  <!-- =======================================================
+       LOADING INDICATOR
+       ======================================================= -->
+  <div class="loader" id="loader">
+    <div class="loader__spinner"></div>
+    <span class="loader__text">Loading Jamaica Bay layers…</span>
+  </div>
+
+  <!-- Application scripts -->
+  <script src="js/popup-content.js"></script>
+  <script src="js/map.js"></script>
+</body>
+
+</html>
