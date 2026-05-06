@@ -7,10 +7,13 @@
      1. pts_capitalproj_jmb_simp           — capital project points
      2. line_capitalproj_jmb_simp          — capital project lines
      3. polygon_capitalproj_jmb_simp       — capital project polygons
-     4. nycblock_projcount_shapesimp       — block-level concentration
-     5. jmb_boundary.json_shapesimp        — Jamaica Bay study area outline
+     4. nycblock_sumwithin_shapesimp       — block-level concentration
+     5. jmb_boundary_shapesimp             — Jamaica Bay study area outline
 
    Add layers BOTTOM → TOP so the visual stack matches the spec.
+
+   Patch: defensive diagnostics for the points layer + auto re-projection
+   of EPSG:2263 (NY State Plane) coordinates to WGS84.
    ===================================================================== */
 
 (function () {
@@ -19,22 +22,16 @@
   /* ---------- 1. Configuration ---------------------------------- */
 
   // ── Mapbox token ──
-  // Replace with your own token from https://account.mapbox.com.
-  // The token below is a public sample shipped with the spec — substitute yours
-  // before deploying anywhere production.
   mapboxgl.accessToken = 'pk.eyJ1IjoibmV3Y2hhbmFwb3JuIiwiYSI6ImNtbmkydWo3NTA4b3MydHBzNG51cTljd24ifQ.YRBkXAWNP5oubXSSObk9XQ';
 
-  // Jamaica Bay center & framing
   var JMB_CENTER = [-73.85, 40.635];
   var DEFAULT_ZOOM = 11.2;
 
-  // Bounds limit panning
   var JMB_BOUNDS = [
     [-74.10, 40.50],
     [-73.65, 40.78]
   ];
 
-  // GeoJSON paths — match exactly the names called out in the spec
   var DATA_PATHS = {
     pts:      './data/pts_capitalproj_jmb_simp.geojson',
     line:     './data/line_capitalproj_jmb_simp.geojson',
@@ -43,11 +40,9 @@
     boundary: './data/jmb_boundary_shapesimp.json'
   };
 
-  // Agency colors — matches CSS --agency-* tokens and popup module
   var AGENCY_COLORS = window.PopupContent.AGENCY_COLORS;
   var BLOCK_RAMP = window.PopupContent.BLOCK_RAMP;
 
-  // Layer/source IDs (constant strings used throughout)
   var SOURCE = {
     pts: 'src-pts', line: 'src-line', polygon: 'src-polygon',
     blocks: 'src-blocks', boundary: 'src-boundary'
@@ -63,7 +58,6 @@
     pts:             'lyr-pts'
   };
 
-  // Hover state tracker (per logical layer key)
   var hovered = { pts: null, line: null, polygon: null, blocks: null, boundary: null };
 
   /* ---------- 2. Map init --------------------------------------- */
@@ -90,7 +84,6 @@
 
   var map = new mapboxgl.Map({
     container: 'map',
-    // Light, restrained basemap — keeps the watershed legible
     style: 'mapbox://styles/mapbox/dark-v11',
     center: JMB_CENTER,
     zoom: DEFAULT_ZOOM,
@@ -134,183 +127,318 @@
     return years.length ? Math.max.apply(null, years) : null;
   }
 
+  /* ----------------------------------------------------------------
+     COORDINATE PROJECTION HELPERS
+     ----------------------------------------------------------------
+     ArcGIS Pro frequently exports GeoJSON in NY Long Island State
+     Plane (EPSG:2263, units = US survey feet). Mapbox GL strictly
+     requires WGS84 (lng/lat). If we detect state-plane coords we
+     convert them on the fly so the layer is visible.
+  ---------------------------------------------------------------- */
+
+  function looksLikeStatePlane(coord) {
+    // EPSG:2263 NY-LI: x ≈ 900,000–1,100,000 ft, y ≈ 100,000–300,000 ft
+    return Math.abs(coord[0]) > 1000 && Math.abs(coord[1]) > 1000;
+  }
+
+  // Approximate inverse Lambert Conformal Conic for EPSG:2263 → WGS84.
+  // Accurate to ~5–10 m, good enough for visualization.
+  function statePlaneToWGS84(x, y) {
+    // Convert US survey feet to meters
+    var x_m = x * 0.3048006096;
+    var y_m = y * 0.3048006096;
+
+    // EPSG:2263 parameters
+    var lat0 = 40.16666666666666 * Math.PI / 180; // latitude of origin
+    var lng0 = -74.0;                              // central meridian
+    var lat1 = 40.66666666666666 * Math.PI / 180; // standard parallel 1
+    var lat2 = 41.03333333333333 * Math.PI / 180; // standard parallel 2
+    var x0 = 300000;                               // false easting (m)
+    var y0 = 0;                                    // false northing (m)
+    var a  = 6378137.0;                            // GRS80 semi-major axis
+    var f  = 1 / 298.257222101;
+    var e2 = 2 * f - f * f;
+    var e  = Math.sqrt(e2);
+
+    function m(lat) {
+      return Math.cos(lat) / Math.sqrt(1 - e2 * Math.sin(lat) * Math.sin(lat));
+    }
+    function t(lat) {
+      var sinL = Math.sin(lat);
+      return Math.tan(Math.PI / 4 - lat / 2) /
+        Math.pow((1 - e * sinL) / (1 + e * sinL), e / 2);
+    }
+    var m1 = m(lat1), m2 = m(lat2);
+    var t0 = t(lat0), t1 = t(lat1), t2 = t(lat2);
+    var n  = (Math.log(m1) - Math.log(m2)) / (Math.log(t1) - Math.log(t2));
+    var F  = m1 / (n * Math.pow(t1, n));
+    var rho0 = a * F * Math.pow(t0, n);
+
+    var dx = x_m - x0;
+    var dy = rho0 - (y_m - y0);
+    var rho = Math.sqrt(dx * dx + dy * dy) * (n < 0 ? -1 : 1);
+    var theta = Math.atan2(dx, dy);
+    var tNew = Math.pow(rho / (a * F), 1 / n);
+
+    var lat = Math.PI / 2 - 2 * Math.atan(tNew);
+    for (var i = 0; i < 8; i++) {
+      var sinL = Math.sin(lat);
+      lat = Math.PI / 2 - 2 * Math.atan(
+        tNew * Math.pow((1 - e * sinL) / (1 + e * sinL), e / 2)
+      );
+    }
+    var lng = theta / n + lng0 * Math.PI / 180;
+    return [lng * 180 / Math.PI, lat * 180 / Math.PI];
+  }
+
+  function reprojectCoords(coords) {
+    if (typeof coords[0] === 'number') {
+      if (looksLikeStatePlane(coords)) {
+        var p = statePlaneToWGS84(coords[0], coords[1]);
+        coords[0] = p[0];
+        coords[1] = p[1];
+      }
+      return;
+    }
+    for (var i = 0; i < coords.length; i++) reprojectCoords(coords[i]);
+  }
+
+  function reprojectIfNeeded(data, kind) {
+    if (!data || !Array.isArray(data.features) || data.features.length === 0) return false;
+    var sampleCoord = null;
+    for (var i = 0; i < data.features.length && !sampleCoord; i++) {
+      var g = data.features[i].geometry;
+      if (!g || !g.coordinates) continue;
+      var c = g.coordinates;
+      while (Array.isArray(c) && Array.isArray(c[0])) c = c[0];
+      if (typeof c[0] === 'number' && typeof c[1] === 'number') sampleCoord = c;
+    }
+    if (!sampleCoord || !looksLikeStatePlane(sampleCoord)) return false;
+
+    console.warn('[map] ' + kind + ' appears to be in EPSG:2263 (NY State Plane); ' +
+                 'reprojecting to WGS84 on the fly. For best results re-export the ' +
+                 'GeoJSON from ArcGIS Pro using the WGS84 coordinate system.');
+    data.features.forEach(function (f) {
+      if (f.geometry && f.geometry.coordinates) reprojectCoords(f.geometry.coordinates);
+    });
+    return true;
+  }
+
+  /* ---------- Diagnostic logging --------------------------------- */
+  function logLayerDiagnostic(key, data) {
+    var n = (data && data.features) ? data.features.length : 0;
+    if (!n) {
+      console.error('[map] layer "' + key + '" has 0 features. ' +
+                    'Check that ' + DATA_PATHS[key] + ' exists and is valid GeoJSON.');
+      return;
+    }
+    var types = {};
+    var sampleCoord = null;
+    var sampleProps = data.features[0].properties;
+    data.features.forEach(function (f) {
+      if (f.geometry) {
+        var t = f.geometry.type;
+        types[t] = (types[t] || 0) + 1;
+        if (!sampleCoord && f.geometry.coordinates) {
+          var c = f.geometry.coordinates;
+          while (Array.isArray(c) && Array.isArray(c[0])) c = c[0];
+          if (typeof c[0] === 'number') sampleCoord = c;
+        }
+      }
+    });
+    console.log('[map] ' + key + ': ' + n + ' features',
+                'types=' + JSON.stringify(types),
+                'sample coord=' + JSON.stringify(sampleCoord),
+                'sample props keys=' + Object.keys(sampleProps || {}).join(','));
+  }
+
   function normalizeCapitalProjects(data, kind) {
     ensureFeatureIds(data, kind);
+    reprojectIfNeeded(data, kind);
+    logLayerDiagnostic(kind, data);
+
+    if (kind === 'pts' && data.features.length) {
+      var nonPoint = data.features.filter(function (f) {
+        return !f.geometry || (f.geometry.type !== 'Point' && f.geometry.type !== 'MultiPoint');
+      });
+      if (nonPoint.length === data.features.length) {
+        console.error('[map] pts file contains NO Point/MultiPoint geometries — ' +
+                      'a circle layer cannot render this. Geometry types found: ' +
+                      JSON.stringify(Array.from(new Set(data.features.map(function(f){return f.geometry && f.geometry.type;})))));
+      } else if (nonPoint.length > 0) {
+        console.warn('[map] pts file contains ' + nonPoint.length +
+                     ' non-point features that will not render in the circle layer.');
+      }
+    }
+
     data.features.forEach(function (f) {
       var p = f.properties || (f.properties = {});
       var agency = window.PopupContent.getAgency(p, kind);
       p._agency = agency;
       p._color = AGENCY_COLORS[agency] || '#5b6770';
       p._year = getCompletionYear(p);
-      // For points: DEP fill is 85%, others have transparent fill (outline only)
       p._isDEP = (agency === 'DEP') ? 1 : 0;
     });
   }
 
   function normalizeBlocks(data) {
     ensureFeatureIds(data, 'block');
+    reprojectIfNeeded(data, 'blocks');
+    logLayerDiagnostic('blocks', data);
     data.features.forEach(function (f) {
       var p = f.properties || (f.properties = {});
       var n = window.PopupContent.getProjCount(p);
       p._count = n;
       var band = window.PopupContent.classifyProjCount(n);
       p._fill = band.color;
-      // Outline grey for light fills, white for dark fills (per spec)
       p._outline = (n >= 8) ? '#ffffff' : '#9e9e9e';
     });
   }
 
   function normalizeBoundary(data) {
     ensureFeatureIds(data, 'boundary');
+    reprojectIfNeeded(data, 'boundary');
+    logLayerDiagnostic('boundary', data);
   }
 
   /* ---------- 4. Add sources & layers --------------------------- */
-  /* Add BOTTOM-UP so the visual order matches the spec.            */
 
   function buildLayers() {
-    /* ---------- Boundary (BOTTOM of project layers) ---------- */
+    /* Boundary */
     map.addSource(SOURCE.boundary, { type: 'geojson', data: sources.boundary });
     map.addLayer({
-      id: LAYER.boundaryFill,
-      type: 'fill',
-      source: SOURCE.boundary,
-      paint: {
-        'fill-color': '#14525c',
-        'fill-opacity': 0.04
-      }
+      id: LAYER.boundaryFill, type: 'fill', source: SOURCE.boundary,
+      paint: { 'fill-color': '#14525c', 'fill-opacity': 0.04 }
     });
     map.addLayer({
-      id: LAYER.boundaryLine,
-      type: 'line',
-      source: SOURCE.boundary,
+      id: LAYER.boundaryLine, type: 'line', source: SOURCE.boundary,
       layout: { 'line-cap': 'round', 'line-join': 'round' },
       paint: {
-        'line-color': '#14525c',
-        'line-width': 2,
-        'line-dasharray': [3, 2],
-        'line-opacity': 1
+        'line-color': '#14525c', 'line-width': 2,
+        'line-dasharray': [3, 2], 'line-opacity': 1
       }
     });
 
-    /* ---------- Blocks (concentration choropleth) ---------- */
+    /* Blocks */
     map.addSource(SOURCE.blocks, { type: 'geojson', data: sources.blocks });
     map.addLayer({
-      id: LAYER.blocksFill,
-      type: 'fill',
-      source: SOURCE.blocks,
+      id: LAYER.blocksFill, type: 'fill', source: SOURCE.blocks,
       paint: {
         'fill-color': ['get', '_fill'],
-        'fill-opacity': [
-          'case',
-          ['boolean', ['feature-state', 'hover'], false], 0.95,
-          0.78
-        ]
+        'fill-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 0.95, 0.78]
       }
     });
     map.addLayer({
-      id: LAYER.blocksLine,
-      type: 'line',
-      source: SOURCE.blocks,
+      id: LAYER.blocksLine, type: 'line', source: SOURCE.blocks,
       paint: {
         'line-color': ['get', '_outline'],
-        // 0.1 point ≈ 0.13 px in mapbox terms — keep it thin
-        'line-width': [
-          'case',
-          ['boolean', ['feature-state', 'hover'], false], 1.2,
-          0.4
-        ]
+        'line-width': ['case', ['boolean', ['feature-state', 'hover'], false], 1.2, 0.4]
       }
     });
 
-    /* ---------- Polygon capital projects ---------- */
+    /* Polygon capital projects */
     map.addSource(SOURCE.polygon, { type: 'geojson', data: sources.polygon });
     map.addLayer({
-      id: LAYER.polygonFill,
-      type: 'fill',
-      source: SOURCE.polygon,
+      id: LAYER.polygonFill, type: 'fill', source: SOURCE.polygon,
       paint: {
         'fill-color': ['get', '_color'],
-        // Solid polygons distract; keep them subtle
-        'fill-opacity': [
-          'case',
-          ['boolean', ['feature-state', 'hover'], false], 0.5,
-          0.22
-        ]
+        'fill-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 0.5, 0.22]
       }
     });
     map.addLayer({
-      id: LAYER.polygonLine,
-      type: 'line',
-      source: SOURCE.polygon,
+      id: LAYER.polygonLine, type: 'line', source: SOURCE.polygon,
       layout: { 'line-cap': 'round', 'line-join': 'round' },
       paint: {
         'line-color': ['get', '_color'],
-        'line-width': [
-          'case',
-          ['boolean', ['feature-state', 'hover'], false], 2.5,
-          1.4
-        ],
+        'line-width': ['case', ['boolean', ['feature-state', 'hover'], false], 2.5, 1.4],
         'line-opacity': 0.95
       }
     });
 
-    /* ---------- Line capital projects ---------- */
+    /* Line capital projects */
     map.addSource(SOURCE.line, { type: 'geojson', data: sources.line });
     map.addLayer({
-      id: LAYER.line,
-      type: 'line',
-      source: SOURCE.line,
+      id: LAYER.line, type: 'line', source: SOURCE.line,
       layout: { 'line-cap': 'round', 'line-join': 'round' },
       paint: {
         'line-color': ['get', '_color'],
-        'line-width': [
-          'case',
-          ['boolean', ['feature-state', 'hover'], false], 5,
-          2.4
-        ],
-        'line-opacity': [
-          'case',
-          ['boolean', ['feature-state', 'hover'], false], 1,
-          0.9
-        ]
+        'line-width': ['case', ['boolean', ['feature-state', 'hover'], false], 5, 2.4],
+        'line-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 1, 0.9]
       }
     });
 
-    /* ---------- Point capital projects (TOP) ----------
-       Per spec:
-         - opacity for DEP points = 85%
-         - the rest = 0% fill (outline only / transparent)
-       Implemented via a `case` on the _isDEP flag.
-    */
+    /* Point capital projects (TOP) */
     map.addSource(SOURCE.pts, { type: 'geojson', data: sources.pts });
     map.addLayer({
-      id: LAYER.pts,
-      type: 'circle',
-      source: SOURCE.pts,
+      id: LAYER.pts, type: 'circle', source: SOURCE.pts,
       paint: {
         'circle-radius': [
           'case',
           ['boolean', ['feature-state', 'hover'], false], 10,
           ['interpolate', ['linear'], ['zoom'],
-            10, 6,
-            13, 9,
-            15, 14
+            10, 6, 13, 9, 15, 14
           ]
         ],
-        'circle-color': ['get', '_color'],
+        // Defensive fallback in case the data file has no `_color`
+        'circle-color': [
+          'case',
+          ['has', '_color'], ['get', '_color'],
+          '#5b6770'
+        ],
         'circle-opacity': 1.0,
-        'circle-stroke-color': ['get', '_color'],
+        'circle-stroke-color': '#ffffff',
         'circle-stroke-width': [
           'case',
-          ['boolean', ['feature-state', 'hover'], false], 3,
-          2.0
+          ['boolean', ['feature-state', 'hover'], false], 3, 1.5
         ],
         'circle-stroke-opacity': 0.95
       }
     });
+
+    // After layers settle, see how many points are actually rendered.
+    setTimeout(function () {
+      try {
+        var rendered = map.querySourceFeatures(SOURCE.pts);
+        var visible = map.queryRenderedFeatures({ layers: [LAYER.pts] });
+        console.log('[map] points: ' + rendered.length + ' in source, ' +
+                    visible.length + ' rendered in current viewport');
+        if (rendered.length > 0 && visible.length === 0) {
+          console.warn('[map] points exist in the source but none are in the current ' +
+                       'viewport. Auto-fitting bounds to point data…');
+          fitToPoints();
+        }
+      } catch (err) {
+        console.warn('[map] post-build diagnostic failed:', err);
+      }
+    }, 800);
   }
 
-  /* ---------- 5. Hover state helpers ---------------------------- */
+  function fitToPoints() {
+    if (!sources.pts || !sources.pts.features || !sources.pts.features.length) return;
+    var bounds = new mapboxgl.LngLatBounds();
+    sources.pts.features.forEach(function (f) {
+      if (!f.geometry || !f.geometry.coordinates) return;
+      var c = f.geometry.coordinates;
+      if (typeof c[0] === 'number') {
+        if (isFinite(c[0]) && isFinite(c[1]) &&
+            Math.abs(c[0]) <= 180 && Math.abs(c[1]) <= 90) {
+          bounds.extend(c);
+        }
+      } else if (Array.isArray(c[0])) {
+        c.forEach(function (cc) {
+          if (Array.isArray(cc) && typeof cc[0] === 'number' &&
+              Math.abs(cc[0]) <= 180 && Math.abs(cc[1]) <= 90) {
+            bounds.extend(cc);
+          }
+        });
+      }
+    });
+    if (!bounds.isEmpty()) {
+      map.fitBounds(bounds, { padding: 60, maxZoom: 14, duration: 800 });
+    }
+  }
+
+  /* ---------- 5. Hover ----------------------------------------- */
 
   function setHoverState(layerKey, feature, on) {
     if (!feature || feature.id == null) return;
@@ -344,7 +472,7 @@
     });
   }
 
-  /* ---------- 6. Popup panel controller ------------------------- */
+  /* ---------- 6. Popup panel ----------------------------------- */
 
   var panel = document.getElementById('popupPanel');
   var content = document.getElementById('popupContent');
@@ -391,14 +519,14 @@
     return null;
   }
 
-  /* ---------- 7. Data loading ----------------------------------- */
+  /* ---------- 7. Data loading ---------------------------------- */
 
   var sources = { pts: null, line: null, polygon: null, blocks: null, boundary: null };
 
   function load(key, normalize) {
     return fetch(DATA_PATHS[key])
       .then(function (r) {
-        if (!r.ok) throw new Error('Failed to load ' + DATA_PATHS[key] + ' (' + r.status + ')');
+        if (!r.ok) throw new Error('HTTP ' + r.status + ' on ' + DATA_PATHS[key]);
         return r.json();
       })
       .then(function (data) {
@@ -407,7 +535,7 @@
         return data;
       })
       .catch(function (err) {
-        console.warn('[map] could not load ' + key + ':', err.message);
+        console.error('[map] could not load "' + key + '" — ' + err.message);
         sources[key] = { type: 'FeatureCollection', features: [] };
         return sources[key];
       });
@@ -454,7 +582,6 @@
     var ticksEl = document.getElementById('timeTicks');
     var playIcon = document.getElementById('playIcon');
 
-    // Compute available year range from loaded data
     var years = [];
     ['pts', 'line', 'polygon'].forEach(function (k) {
       if (!sources[k]) return;
@@ -464,7 +591,6 @@
       });
     });
     if (!years.length) {
-      // Hide slider if no time data
       document.getElementById('timeSlider').style.display = 'none';
       return;
     }
@@ -474,7 +600,6 @@
     range.max = maxY;
     range.value = maxY;
 
-    // Build year ticks
     ticksEl.innerHTML = '';
     var n = maxY - minY;
     var stride = n > 8 ? 2 : 1;
@@ -487,34 +612,29 @@
     var allMode = true;
 
     function applyFilter(year) {
-      // Filter expression: keep features with _year <= year
-      // Use a hybrid filter: features with no year stay visible
       var filterExpr;
       if (allMode) {
-        filterExpr = null; // show all
+        filterExpr = null;
       } else {
+        // Keep features whose _year is missing/null OR <= the slider year.
+        // The triple branch handles all three states defensively so a feature
+        // never silently disappears just because the date field was unparseable.
         filterExpr = ['any',
           ['!', ['has', '_year']],
-          ['<=', ['get', '_year'], year]
+          ['==', ['get', '_year'], null],
+          ['<=', ['to-number', ['get', '_year']], year]
         ];
       }
       [LAYER.pts, LAYER.line, LAYER.polygonFill, LAYER.polygonLine].forEach(function (id) {
         if (map.getLayer(id)) {
-          if (filterExpr === null) {
-            map.setFilter(id, null);
-          } else {
-            map.setFilter(id, filterExpr);
-          }
+          if (filterExpr === null) map.setFilter(id, null);
+          else map.setFilter(id, filterExpr);
         }
       });
     }
 
     function updateReadout() {
-      if (allMode) {
-        readout.textContent = 'All years';
-      } else {
-        readout.textContent = 'Through ' + range.value;
-      }
+      readout.textContent = allMode ? 'All years' : 'Through ' + range.value;
     }
 
     range.addEventListener('input', function () {
@@ -530,16 +650,11 @@
       updateReadout();
     });
 
-    // Play / pause
     var playing = false;
     var timer = null;
     function step() {
       var v = parseInt(range.value, 10);
-      if (v >= maxY) {
-        v = minY;
-      } else {
-        v += 1;
-      }
+      v = (v >= maxY) ? minY : v + 1;
       range.value = v;
       allMode = false;
       applyFilter(v);
@@ -560,7 +675,7 @@
     updateReadout();
   }
 
-  /* ---------- 10. Title block collapse ------------------------- */
+  /* ---------- 10. Title block ---------------------------------- */
 
   function setupTitleBlock() {
     var tb = document.getElementById('titleBlock');
@@ -592,7 +707,6 @@
     ]).then(function () {
       buildLayers();
 
-      // Wire hover handlers in correct order — points on top get priority
       bindHover('boundary', [LAYER.boundaryFill]);
       bindHover('blocks',   [LAYER.blocksFill]);
       bindHover('polygon',  [LAYER.polygonFill]);
@@ -603,15 +717,11 @@
       setupTimeSlider();
       setupTitleBlock();
 
-      // Reset panel or show feature popup on click
       map.on('click', function (e) {
         var hits = map.queryRenderedFeatures(e.point, {
           layers: [LAYER.pts, LAYER.line, LAYER.polygonFill, LAYER.blocksFill, LAYER.boundaryFill]
         });
-        if (!hits.length) {
-          resetPanel();
-          return;
-        }
+        if (!hits.length) { resetPanel(); return; }
         var layerKey = getLayerKeyFromLayerId(hits[0].layer.id);
         if (layerKey) {
           setPanel(window.PopupContent[layerKey](hits[0].properties || {}));
@@ -621,16 +731,13 @@
         }
       });
 
-      // Hide loader
       var loader = document.getElementById('loader');
       if (loader) loader.classList.add('is-hidden');
     });
   });
 
-  // Reset panel when leaving the map area
   map.getContainer().addEventListener('mouseleave', resetPanel);
 
-  // Surface map errors gracefully (e.g. invalid token)
   map.on('error', function (e) {
     if (e && e.error && /access token|401|403/i.test(String(e.error.message || e.error))) {
       console.error('[map] Mapbox token error — replace mapboxgl.accessToken in js/map.js');
