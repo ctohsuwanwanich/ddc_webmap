@@ -27,39 +27,7 @@ jamaica_bay_map/
 │   ├── nycblock_sumwihtin_shapesimp.geojson
 │   └── jmb_boundary.json_shapesimp.geojson
 └── README.md
-```
 
-## How to run
-
-The map is fully static — open `index.html` through any local web server
-(direct `file://` opening is blocked by browsers because of the GeoJSON
-fetch calls).
-
-**Option 1 — Python**
-```bash
-cd jamaica_bay_map
-python3 -m http.server 8000
-# open http://localhost:8000
-```
-
-**Option 2 — VS Code Live Server extension**
-Right-click `index.html` → *Open with Live Server*.
-
-**Option 3 — Node**
-```bash
-npx serve .
-```
-
-### Mapbox token
-
-`js/map.js` ships with a sample `mapboxgl.accessToken`. Replace it with
-your own token from <https://account.mapbox.com> before deploying. The
-project loader will display a clear error message if the token is
-invalid.
-
-```js
-// js/map.js, line ~20
-mapboxgl.accessToken = 'YOUR_PUBLIC_TOKEN_HERE';
 ```
 
 ---
