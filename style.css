@@ -518,6 +518,19 @@ body {
   background: var(--paper-tint);
   border-radius: 999px;
   color: var(--ink);
+  cursor: pointer;
+  transition: all 0.2s var(--ease);
+  opacity: 0.5;
+  border: 1px solid transparent;
+}
+.agency-chip:hover {
+  opacity: 0.75;
+}
+.agency-chip.is-selected {
+  opacity: 1;
+  background: var(--paper);
+  border: 1px solid var(--ink-soft);
+  font-weight: 600;
 }
 .agency-chip i {
   width: 8px; height: 8px;

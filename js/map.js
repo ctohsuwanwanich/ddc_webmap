@@ -695,6 +695,58 @@
     });
   }
 
+  /* ---------- 10b. Agency filter ------------------------------ */
+
+  function setupAgencyFilter() {
+    var agencyChips = document.querySelectorAll('.agency-chip');
+    if (!agencyChips.length) return;
+
+    // Initialize: all agencies selected
+    var selectedAgencies = { DEP: true, DOT: true, DDC: true, DPR: true };
+
+    function applyAgencyFilter() {
+      var agencies = Object.keys(selectedAgencies).filter(function (a) {
+        return selectedAgencies[a];
+      });
+
+      var filterExpr;
+      if (agencies.length === 4) {
+        // All agencies selected — no filter needed
+        filterExpr = null;
+      } else if (agencies.length === 0) {
+        // No agencies selected — hide all
+        filterExpr = false;
+      } else {
+        // Some agencies selected — show only those
+        filterExpr = ['in', ['get', '_agency'], ['literal', agencies]];
+      }
+
+      // Apply to all capital project layers
+      [LAYER.pts, LAYER.line, LAYER.polygonFill, LAYER.polygonLine].forEach(function (id) {
+        if (map.getLayer(id)) {
+          if (filterExpr === null) map.setFilter(id, null);
+          else map.setFilter(id, filterExpr);
+        }
+      });
+    }
+
+    agencyChips.forEach(function (chip) {
+      var agency = chip.getAttribute('data-agency');
+      if (agency) {
+        // Mark as selected initially
+        chip.classList.add('is-selected');
+
+        chip.addEventListener('click', function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          selectedAgencies[agency] = !selectedAgencies[agency];
+          chip.classList.toggle('is-selected', selectedAgencies[agency]);
+          applyAgencyFilter();
+        });
+      }
+    });
+  }
+
   /* ---------- 11. Boot ----------------------------------------- */
 
   map.on('load', function () {
@@ -715,6 +767,7 @@
 
       setupLayerToggles();
       setupTimeSlider();
+      setupAgencyFilter();
       setupTitleBlock();
 
       map.on('click', function (e) {
