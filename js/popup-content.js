@@ -15,7 +15,7 @@
   };
 
   // Block concentration ramp (matches the hex codes in spec)
-  var BLOCK_RAMP = ['#F0F9E8', '#BAE4BC', '#7BCCC4', '#43A2CA', '#9868AC'];
+  var BLOCK_RAMP = ['#fafdf8', '#BAE4BC', '#7BCCC4', '#43A2CA', '#9868AC'];
   var BLOCK_BANDS = [
     { min: 0, max: 0.415,   label: 'No Capital Infrastructure Projects',  band: 'Very low',  color: BLOCK_RAMP[0] },
     { min: 0.415, max: 3.288,   label: 'A Couple of Projects',  band: 'Low',       color: BLOCK_RAMP[1] },

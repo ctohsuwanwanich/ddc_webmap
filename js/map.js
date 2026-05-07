@@ -36,7 +36,7 @@
     pts:      './data/pts_capitalproj_jmb_simp.geojson',
     line:     './data/line_capitalproj_jmb_simp.geojson',
     polygon:  './data/polygon_capitalproj_jmb_simp.geojson',
-    blocks:   './data/nycblock_sumwithin_shapesimp.geojson',
+    blocks:   './data/nycblock_sumwithin.geojson',
     boundary: './data/jmb_boundary_shapesimp.json'
   };
 
@@ -373,7 +373,7 @@
       id: LAYER.pts, type: 'circle', source: SOURCE.pts,
       paint: {
         'circle-radius': ['interpolate', ['linear'], ['zoom'],
-            12, 4, 13, 9
+            11.2, 2, 13, 4, 16, 10
           ],
         // Defensive fallback in case the data file has no `_color`
         'circle-color': [
@@ -383,7 +383,7 @@
         ],
         'circle-opacity': ['interpolate', ['linear'], ['zoom'],
             11.2, 0.2,
-            15, 0.7
+            16, 0.8
           ],
         'circle-stroke-color': '#ffffff',
         'circle-stroke-width': [
