@@ -448,17 +448,17 @@ body {
   background: transparent;
   border: none;
   position: relative;
-  width: 28px;
+  width: 16px;
 }
-.swatch-points::before, .swatch-points::after {
+.swatch-points::before {
   content: "";
   position: absolute;
   width: 8px; height: 8px;
   border-radius: 50%;
-  top: 50%; transform: translateY(-50%);
+  top: 50%; left: 50%; transform: translate(-50%, -50%);
+  background: var(--agency-DEP);
+  opacity: 1;
 }
-.swatch-points::before { left: 1px; background: var(--agency-DEP); opacity: 1; }
-.swatch-points::after { left: 14px; border: 1.5px solid var(--agency-DOT); background: transparent; }
 
 .swatch-lines {
   background:

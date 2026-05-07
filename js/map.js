@@ -372,26 +372,25 @@
     map.addLayer({
       id: LAYER.pts, type: 'circle', source: SOURCE.pts,
       paint: {
-        'circle-radius': [
-          'case',
-          ['boolean', ['feature-state', 'hover'], false], 10,
-          ['interpolate', ['linear'], ['zoom'],
-            10, 6, 13, 9, 15, 14
-          ]
-        ],
+        'circle-radius': ['interpolate', ['linear'], ['zoom'],
+            12, 4, 13, 9
+          ],
         // Defensive fallback in case the data file has no `_color`
         'circle-color': [
           'case',
           ['has', '_color'], ['get', '_color'],
           '#5b6770'
         ],
-        'circle-opacity': 1.0,
+        'circle-opacity': ['interpolate', ['linear'], ['zoom'],
+            11.2, 0.2,
+            15, 0.7
+          ],
         'circle-stroke-color': '#ffffff',
         'circle-stroke-width': [
           'case',
-          ['boolean', ['feature-state', 'hover'], false], 3, 1.5
+          ['boolean', ['feature-state', 'hover'], false], 3, 0.5
         ],
-        'circle-stroke-opacity': 0.95
+        'circle-stroke-opacity': 0.3
       }
     });
 
