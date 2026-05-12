@@ -17,11 +17,11 @@
   // Block concentration ramp (matches the hex codes in spec)
   var BLOCK_RAMP = ['#F0F9E8', '#BAE4BC', '#7BCCC4', '#43A2CA', '#9868AC'];
   var BLOCK_BANDS = [
-    { min: 0, max: 0.415,   label: 'No Capital Infrastructure Projects',  band: 'Very low',  color: BLOCK_RAMP[0] },
-    { min: 0.415, max: 3.288,   label: 'A Couple of Projects',  band: 'Low',       color: BLOCK_RAMP[1] },
-    { min: 3.288, max: 23.16,   label: 'Some Projects',  band: 'Moderate',  color: BLOCK_RAMP[2] },
-    { min: 23.16, max: 160.586,  label: 'High Concentration of Projects', band: 'High',      color: BLOCK_RAMP[3] },
-    { min: 160.586, max: Infinity, label: 'Very High Concentration of Projects', band: 'Very high', color: BLOCK_RAMP[4] }
+    { min: 0,       max: 0.415,    label: 'No Capital Infrastructure Projects',  band: 'Very low',   color: BLOCK_RAMP[0] },
+    { min: 0.415,   max: 3.288,    label: 'A Couple of Projects',                band: 'Low',        color: BLOCK_RAMP[1] },
+    { min: 3.288,   max: 23.16,    label: 'Some Projects',                       band: 'Moderate',   color: BLOCK_RAMP[2] },
+    { min: 23.16,   max: 160.586,  label: 'High Concentration of Projects',      band: 'High',       color: BLOCK_RAMP[3] },
+    { min: 160.586, max: Infinity, label: 'Very High Concentration of Projects', band: 'Very high',  color: BLOCK_RAMP[4] }
   ];
 
   function classifyProjCount(n) {
@@ -44,7 +44,6 @@
 
   function fmtDate(d) {
     if (!d) return '—';
-    // Try to parse ISO or year-only strings
     var date = new Date(d);
     if (!isNaN(date.getTime())) {
       return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
@@ -116,6 +115,32 @@
     return Number(v) || 0;
   }
 
+  /* ---------- Cluster helpers ----------
+     Parse "DPR, DEP, DOT, DDC" into ordered array of known agency codes.
+     Order convention in popup: DEP first (wastewater focus), then DDC, DOT, DPR.
+  */
+  var AGENCY_DISPLAY_ORDER = ['DEP', 'DDC', 'DOT', 'DPR'];
+
+  function parseAgencyList(raw) {
+    if (!raw) return [];
+    var tokens = String(raw)
+      .split(/[,;/]/)
+      .map(function (s) { return s.trim().toUpperCase(); })
+      .filter(function (s) { return AGENCY_COLORS.hasOwnProperty(s); });
+    // Deduplicate while preserving the display order
+    var seen = {};
+    tokens.forEach(function (t) { seen[t] = true; });
+    return AGENCY_DISPLAY_ORDER.filter(function (a) { return seen[a]; });
+  }
+
+  function agencyPillsHtml(agencies) {
+    return agencies.map(function (a) {
+      var color = AGENCY_COLORS[a];
+      return '<span class="pop-agency-pill" style="background:' +
+             color + '"><i></i>' + escapeHtml(a) + '</span>';
+    }).join(' ');
+  }
+
   // -------------------- TEMPLATES --------------------
 
   function capitalProjectTemplate(props, geometryLabel, kind) {
@@ -162,18 +187,11 @@
     getAgency: getAgency,
     getCompletionDate: getCompletionDate,
     getProjCount: getProjCount,
+    parseAgencyList: parseAgencyList,
 
-    pts: function (props) {
-      return capitalProjectTemplate(props, 'point', 'pts');
-    },
-
-    line: function (props) {
-      return capitalProjectTemplate(props, 'line', 'line');
-    },
-
-    polygon: function (props) {
-      return capitalProjectTemplate(props, 'polygon', 'polygon');
-    },
+    pts:     function (props) { return capitalProjectTemplate(props, 'point',   'pts'); },
+    line:    function (props) { return capitalProjectTemplate(props, 'line',    'line'); },
+    polygon: function (props) { return capitalProjectTemplate(props, 'polygon', 'polygon'); },
 
     blocks: function (props) {
       var n = getProjCount(props);
@@ -209,6 +227,36 @@
           'opportunities for integrated wastewater management across DEP, ' +
           'DOT, DDC, and DPR.' +
         '</p>';
+    },
+
+    /* ---------- Cluster popup ----------
+       For the inter-agency cluster tour. Properties expected:
+         - cluster_name        (string)
+         - agency_presented    (comma-separated agency codes)
+         - description         (paragraph of opportunity description)
+       Optional second arg `meta` provides {index, total} for tour positioning.
+    */
+    clusters: function (props, meta) {
+      var name = escapeHtml(props.cluster_name || 'Cluster site');
+      var agencies = parseAgencyList(props.agency_presented);
+      var pills = agencyPillsHtml(agencies);
+      var desc = escapeHtml((props.description || '').trim());
+
+      var eyebrow = 'Inter-agency cluster';
+      if (meta && meta.index != null && meta.total != null) {
+        eyebrow += ' · ' + (meta.index + 1) + ' of ' + meta.total;
+      }
+
+      return '' +
+        '<p class="pop-eyebrow">' + eyebrow + '</p>' +
+        '<p class="pop-title">' + name + '</p>' +
+        '<div class="pop-cluster-agencies">' +
+          '<span class="pop-cluster-k">Agencies presented</span>' +
+          '<div class="pop-cluster-pills">' + pills + '</div>' +
+        '</div>' +
+        '<div class="pop-cluster-desc">' +
+          '<p>' + desc + '</p>' +
+        '</div>';
     }
   };
 

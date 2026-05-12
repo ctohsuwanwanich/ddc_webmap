@@ -1,12 +1,60 @@
 # Opportunities for Integrated Wastewater Management
-### Jamaica Bay, New York City — Web Map
+### Jamaica Bay, New York City — Interactive Web Map
 
 A spatial reading of capital infrastructure projects across the Jamaica Bay
 watershed, produced for **Town & Gown NYC · NYC Department of Design and
-Construction (DDC)**. The map highlights points, lines, and polygons of
-capital work commissioned by **DEP**, **DDC**, **DOT**, and **DPR**, and
-exposes block-level concentrations of capital infrastructure to surface
-opportunities for integrated wastewater management.
+Construction (DDC)**. The map exposes block-level concentrations of capital
+investment alongside individual project geometries, and surfaces **eleven
+inter-agency clusters** — opportunity sites where DEP, DDC, DOT, and DPR
+work converges on the ground.
+
+---
+
+## The two modes
+
+When the page opens, a welcome panel offers two ways to enter:
+
+### 01 · Overall project locations
+The full atlas. Every capital project in the watershed — points, lines,
+polygons — rendered over a block-level concentration surface, with a time
+slider to filter by completion year and layer toggles for each geometry
+type. **Hover** any project to read its details in the floating popup.
+From this mode, a **Start cluster tour** button on the title block moves
+the user to mode 02 without leaving the page.
+
+### 02 · Inter-agency cluster tour
+A curated walk through eleven sites where two or more agencies have
+capital work converging. The cluster tour offers two sub-modes:
+
+| Sub-mode | Behavior |
+|---|---|
+| **Guided** | Step through the eleven clusters in order with prev/next buttons, keyboard navigation (← →), spacebar to toggle auto-play (5 s per cluster), or click any progress dot to jump. The cluster description popup **pins** to the top-right corner so it stays visible while the map flies between sites. **Click** any capital project (point/line/polygon/block) on the map to read its details in a secondary popup at the bottom-right — the cluster description stays pinned for context. |
+| **Explore** | The map frames the whole watershed. Click any cluster marker on the map to read its description. No automatic narrative — explore at your own pace. |
+
+The same five capital infrastructure layers (points, lines, polygons,
+block concentration, boundary) remain available in cluster mode and can
+be toggled in the legend. A **Back to overall project locations** link
+at the top of the tour panel returns to mode 01 at any time.
+
+#### Two popups, two contexts
+
+During a guided tour the screen holds two reading contexts at once:
+
+- **Top-right** — the **pinned cluster popup** with a clay top-border:
+  cluster name, agencies presented, and the opportunity description.
+  It does not move as you mouse around.
+- **Bottom-right** — the **secondary project popup** with a teal
+  top-border, only appears when you click a capital project. It carries
+  the project's title, managing agency pill, FMS ID, and completion date.
+  A `×` close button dismisses it, and it auto-hides whenever the tour
+  advances (prev / next / auto-play / progress-dot / cluster-marker click)
+  or when you switch sub-modes or leave cluster mode.
+
+This split keeps the tour narrative readable while letting you inspect
+the surrounding infrastructure on demand. Hover popups are intentionally
+disabled while the cluster popup is pinned — interaction during the
+guided tour is **click only**, so the calm narrative isn't broken by
+incidental cursor movement.
 
 ---
 
@@ -14,39 +62,37 @@ opportunities for integrated wastewater management.
 
 ```
 jamaica_bay_map/
-├── index.html                  ← entry point
+├── index.html                       ← entry point
 ├── css/
-│   └── style.css               ← all styling (typography, layout, theme)
+│   └── style.css                    ← all styling
 ├── js/
-│   ├── map.js                  ← Mapbox GL setup, layers, time slider, toggles
-│   └── popup-content.js        ← popup HTML templates (one per layer)
+│   ├── map.js                       ← Mapbox, modes, tour, secondary panel
+│   └── popup-content.js             ← popup HTML templates (incl. clusters)
 ├── data/
-│   ├── pts_capitalproj_jmb_simp.geojson
-│   ├── line_capitalproj_jmb_simp.geojson
-│   ├── polygon_capitalproj_jmb_simp.geojson
-│   ├── nycblock_sumwihtin_shapesimp.geojson
-│   └── jmb_boundary.json_shapesimp.geojson
+│   ├── pts_capitalproj_jmb_simp.geojson      — capital project points
+│   ├── line_capitalproj_jmb_simp.geojson     — capital project lines
+│   ├── polygon_capitalproj_jmb_simp.geojson  — capital project polygons
+│   ├── nycblock_sumwithin.geojson            — block-level concentration
+│   ├── jmb_boundary_shapesimp.json           — study-area outline
+│   └── cluster_desc_simp.geojson             — 11 inter-agency clusters
 └── README.md
-
 ```
-
 ---
 
 ## Map composition
 
 ### Layer stack (top → bottom)
 
-The layer order specified for this project, where higher items are drawn
-on top of lower ones:
-
-1. `pts_capitalproj_jmb_simp.geojson` — capital project points
-2. `line_capitalproj_jmb_simp.geojson` — capital project lines
-3. `polygon_capitalproj_jmb_simp.geojson` — capital project polygons
-4. `nycblock_projcount_shapesimp.geojson` — block-level concentration
-5. `jmb_boundary.json_shapesimp.geojson` — Jamaica Bay study area outline
+1. **Cluster markers + halo + numeric label** *(cluster mode only)*
+2. `pts_capitalproj_jmb_simp.geojson` — capital project points
+3. `line_capitalproj_jmb_simp.geojson` — capital project lines
+4. `polygon_capitalproj_jmb_simp.geojson` — capital project polygons
+5. `nycblock_sumwithin.geojson` — block-level concentration
+   *(hidden in cluster mode for visual calm)*
+6. `jmb_boundary_shapesimp.json` — Jamaica Bay study area outline
 
 In Mapbox GL JS the visual order is built **bottom-up**: the boundary
-loads first, the points load last. See `js/map.js → buildLayers()`.
+loads first, the cluster overlay loads last. See `js/map.js → buildLayers()`.
 
 ### Symbology
 
@@ -59,38 +105,67 @@ loads first, the points load last. See `js/map.js → buildLayers()`.
 | DDC | `#5b6770` (slate) | integrated infrastructure |
 | DPR | `#5a8a3a` (marsh green) | parks, shoreline, restoration |
 
-**Point fill opacity** follows the project specification:
-- **DEP points** are filled at **85% opacity** (visually dominant — the
-  wastewater management focus of the study)
-- **All other agencies** have **0% fill opacity** (outline-only rings),
-  keeping non-DEP locations visible without competing for attention
-
 **Block-level capital infrastructure concentration** uses a 5-class
 sequential ramp:
 
 | Class | Range | Hex |
 |---|---|---|
-| Very low | 0 - 0.42 Projects | `#F0F9E8` |
-| Low | 0.42 - 3.29 Projects | `#BAE4BC` |
-| Moderate | 3.29 - 23.16 Projects | `#7BCCC4` |
-| High | 23.16 - 160.59 Projects| `#43A2CA` |
-| Very high | More than 160.59 Projects | `#9868AC` |
+| Very low | 0 – 0.415 | `#F0F9E8` |
+| Low | 0.415 – 3.288 | `#BAE4BC` |
+| Moderate | 3.288 – 23.16 | `#7BCCC4` |
+| High | 23.16 – 160.586 | `#43A2CA` |
+| Very high | 160.586 + | `#9868AC` |
 
-Block outlines are 0.1 pt — **grey (`#9e9e9e`) on light fills**, **white
-(`#ffffff`) on dark fills** (per spec).
+### Cluster popup contents (top-right, pinned)
+
+1. **Eyebrow** — `Inter-agency cluster · N of 11` (in guided tour) or
+   `Inter-agency cluster` (in explore mode).
+2. **Cluster name** — e.g. *Rufus King Park*, *Bildersee Playground*.
+3. **Agencies presented** — color-coded chips matching the existing
+   agency palette, ordered DEP · DDC · DOT · DPR for visual consistency
+   regardless of input order.
+4. **Description** — a paragraph describing the integration opportunity.
+
+### Secondary project popup (bottom-right, clicked during guided tour)
+
+Carries the same template as the overview mode hover popup, with a teal
+top-border to mark it as a secondary reading context:
+
+- Capital project · point / line / polygon
+- Project title
+- Managing agency pill (DEP / DOT / DDC / DPR)
+- FMS ID, completion date, budget if available
+- Block popups show concentration class + range
+
+A small circular `×` button in the top-right corner of the panel closes it.
 
 ### Interactive elements
 
-- **Hover popup** for every capital project (point/line/polygon) shows:
-  *project title*, *managing agency*, *completion date*. Budget is
-  shown when available.
-- **Hover popup** on blocks shows **level of capital infrastructure
-  concentration** (numeric count + class band).
-- **Legend** with checkboxes turns each layer on and off independently.
-- **Time slider** (bottom-center) filters projects by completion year.
-  Press ▶ to animate forward through the timeline; press *All* to reset.
-- **Title block** collapses out of the way so the watershed reads cleanly.
-- **Reset view** button (top-right) returns to the framing.
+- **Welcome modal** — first-touch chooser between Overview and Cluster Tour.
+- **Hover popup** for every capital project showing title, agency,
+  FMS ID, completion date (overview mode only — disabled while the
+  cluster popup is pinned).
+- **Hover popup on blocks** showing the level of capital infrastructure
+  concentration (overview mode only).
+- **Layer toggles** in the legend for each capital project geometry,
+  the block surface, and (in cluster mode) the cluster overlay.
+- **Agency filter chips** — click an agency chip in the legend to toggle
+  visibility of that agency's projects across all geometry types.
+- **Time slider** (overview mode) — filters projects by completion year,
+  with a play control to animate forward.
+- **Tour controls** (cluster mode, guided sub-mode):
+  - `← Prev` / `Next →` buttons
+  - `▶ Auto` — auto-play through the 11 clusters every 5 s
+  - **Progress dots** — click any to jump
+  - **Keyboard**: `←` `→` to navigate, spacebar to toggle auto-play
+- **Click any cluster marker** — moves the tour to that cluster
+  (works in both sub-modes).
+- **Click any capital project during the guided tour** — opens a
+  secondary popup at the bottom-right with the project's details. The
+  pinned cluster popup stays put. Close the secondary popup with its
+  `×` button, or advance the tour to clear it automatically.
+- **Title block / tour header** collapses so the watershed reads cleanly.
+- **Reset view** button (top-right) returns to the Jamaica Bay framing.
 
 ---
 
@@ -115,81 +190,76 @@ Block outlines are 0.1 pt — **grey (`#9e9e9e`) on light fills**, **white
 - **DEP Green Infrastructure Point Layer** — NYC Open Data
   <https://data.cityofnewyork.us/Environment/DEP-Green-Infrastructure-Point-Layer-/df32-vzax/about_data>
 
+### Inter-agency clusters
+The eleven cluster sites in `cluster_desc_simp.geojson` were identified
+by spatial inspection of the deduplicated capital project dataset —
+locations where two or more of DEP, DDC, DOT, and DPR have current or
+recent capital work within a small radius. Each cluster has been
+characterized with a short description of the integration opportunity it
+presents. Required schema for each feature:
+
+```json
+{
+  "cluster_name":      "Rufus King Park",
+  "agency_presented":  "DPR, DEP, DOT, DDC",
+  "description":       "...opportunity description..."
+}
+```
+
 ---
 
 ## Methodology
 
 ### 1 — Capital project mapping
 
-1. Upload borough boundaries.
-2. Obtain the Jamaica Bay boundary file from the NYU UDS ArcGIS Online
-   item.
-3. *Add Data from Path* using the link above; the original includes
-   features outside the study area.
-4. **Copy Features** to extract just the Jamaica Bay study area; export
-   to a polygon feature class (`jmb_boundary`).
-5. Inventory the available capital project data:
-   - The dataset separated by fiscal year contains all the fiscal years
-     needed but no project details and no spatial geometry.
-   - The other dataset has all the project details but no fiscal year
-     information and no spatial geometry.
-   - The polygon dataset has spatial geometry but limited details and
-     no fiscal years.
-6. **Clip** all spatial capital infrastructure datasets to the Jamaica
-   Bay boundary.
-7. **Select by Attributes** to retain only the agencies of interest:
-   `magency IN ('DOT', 'DEP', 'DDC', 'DPR')`.
-8. **Clean** the capital project files:
-   - Filter for the lowest project number per fiscal year, narrowing to
-     the canonical record per project.
-   - **Left join** the project details onto the fiscal-year file so
-     each row carries spatial geometry, fiscal year, and full attributes.
+1. Load borough boundaries into the project workspace.
+2. Obtain the Jamaica Bay boundary file from the NYU UDS ArcGIS Online item.
+3. Use **Copy Features** to extract only the Jamaica Bay study area
+   polygon (`jmb_boundary`).
+4. Inventory the available capital project datasets and confirm:
+   - the fiscal-year-segmented dataset has temporal coverage but no
+     geometry or detail;
+   - the project-detail dataset has full attributes but no fiscal year
+     or geometry;
+   - the polygon dataset has geometry but limited attributes.
+5. **Clip** every spatial dataset to the Jamaica Bay boundary.
+6. **Select by Attributes** to retain only the four agencies of interest:
+   `magency IN ('DEP', 'DOT', 'DDC', 'DPR')`.
+7. **Clean & left-join**: filter for the lowest project number per
+   fiscal year, then left-join project detail onto the fiscal-year file.
 
 ### 2 — De-duplication across sources
 
-Three datasets overlap: the **IMF JSON**, the **DCP Capital Project
-Tracker**, and the **DPR Capital Project Tracker**.
+- **Select by Location → Intersect** identifies overlapping records.
+- Duplicates are copied to a reference layer before deletion.
+- Outcomes:
+  - `Capital_PARKS_jmb` ↔ `jmb_capitalproj_selection`: 151 duplicates
+    removed (389 → 238).
+  - `IRF_Project_Joined_Clip (DDC)` ↔ `jmb_capitalproj_selection`:
+    33 of 98 overlapping; removed.
+  - The other two pairs had no overlap.
 
-- Use **Select by Location → Intersect** to identify duplicates.
-- Before deletion, **Copy Features** the duplicates to a separate layer
-  for future reference.
-- Pairs and outcomes:
-  - `Capital_PARKS_jmb` ↔ `jmb_capitalproj_selection` →
-    389 − 238 = **151 duplicate projects** removed.
-  - `Capital_PARKS_jmb` ↔ `jmb_capitalproj_pts_selection` →
-    no overlap.
-  - `IRF_Project_Joined_Clip` (DDC data) ↔ `jmb_capitalproj_selection`,
-    using the *Completely within* clause →
-    **33 of 98** overlapping; removed.
-  - `IRF_Project_Joined_Clip` ↔ `jmb_capitalproj_pts_selection` →
-    no overlap.
+### 3 — Block-level concentration
 
-### 3 — Clustering analysis
+- **Create Spatial Sampling Locations** converts polygon projects to
+  representative points (systematic, 400 m² square bins).
+- **Multipart to Singlepart** splits multipoint features.
+- **Summarize Within** counts points per NYC tax block (`nyblock_jmb`)
+  to produce `proj_count`, classified in the 5-class ramp above.
 
-To reason about concentration, polygon projects must first be reduced
-to representative points so they can be summed alongside true point
-features:
+### 4 — Inter-agency clusters
 
-1. **Create Spatial Sampling Locations** to generate representative
-   points within each polygon.
-   - Datasets: `IFRProjects_join_buffer`, `Capitalproj_selection`
-   - Sampling method: **Systematic**
-   - Bin shape: **square**
-   - Bin size: **400 m²**
-   - Minimum distance between sample points: **0 m**
-2. Convert multipoint capital features to single point features using
-   the **Multipart to Singlepart** tool.
-3. Use **Summarize Within** to sum how many capital projects fall on
-   each NYC tax block:
-   - **Input polygons:** `nyblock_jmb`
-   - **Summarize features:** all capital infrastructure (points)
-4. The resulting attribute (`proj_count`) is classified into the 5
-   concentration bands described above and rendered with the
-   sequential ramp `#F0F9E8 → #BAE4BC → #7BCCC4 → #43A2CA → #9868AC`.
+Cluster sites were identified manually by visual inspection of the
+block-level concentration surface and the underlying agency project
+geometries. A site qualified as a cluster when two or more of the four
+agencies had capital work within a small radius — typically a single
+park, plaza, playground, or street segment.
+
+---
 
 ## Stack
 
-- **Mapbox GL JS** v3.20.0 (basemap: `mapbox://styles/mapbox/light-v11`)
+- **Mapbox GL JS** v3.20.0 (basemap: `mapbox://styles/mapbox/dark-v11`)
 - **Source Serif 4** (display) + **Inter Tight** (UI) + **JetBrains
   Mono** (numerical labels) — Google Fonts
 - Vanilla HTML/CSS/JS — no build step
@@ -197,4 +267,5 @@ features:
 ## License & attribution
 
 Data sources are public-domain NYC Open Data and NYU UDS releases.
-Cite **Town & Gown NYC · NYC DDC** when reusing analysis or visuals.
+Cluster identification, descriptions, and methodology by **Town & Gown
+NYC · NYC DDC**. Cite when reusing analysis or visuals.

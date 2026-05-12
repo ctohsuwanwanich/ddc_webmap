@@ -3,17 +3,26 @@
    Jamaica Bay Capital Projects · Integrated Wastewater Management
    =====================================================================
 
-   Layer order (top → bottom of stack as user sees them):
-     1. pts_capitalproj_jmb_simp           — capital project points
-     2. line_capitalproj_jmb_simp          — capital project lines
-     3. polygon_capitalproj_jmb_simp       — capital project polygons
-     4. nycblock_sumwithin_shapesimp       — block-level concentration
-     5. jmb_boundary_shapesimp             — Jamaica Bay study area outline
+   Modes:
+     - 'overview' — original five-layer atlas with time slider
+     - 'cluster'  — same five layers + cluster overlay; guided or
+                    free-explore tour through 11 inter-agency sites
+
+   During a guided cluster tour the cluster description popup is pinned
+   top-right. Clicks on any capital project (point / line / polygon /
+   block) populate a SECONDARY popup panel at the bottom-right so both
+   reading contexts coexist. The secondary panel has its own close
+   button and is auto-hidden when the tour advances.
+
+   Layer order (top → bottom, visible to user):
+     1. lyr-clusters (cluster mode only)
+     2. lyr-pts
+     3. lyr-line
+     4. lyr-polygon-(fill|line)
+     5. lyr-blocks-(fill|line)
+     6. lyr-boundary-(fill|line)
 
    Add layers BOTTOM → TOP so the visual stack matches the spec.
-
-   Patch: defensive diagnostics for the points layer + auto re-projection
-   of EPSG:2263 (NY State Plane) coordinates to WGS84.
    ===================================================================== */
 
 (function () {
@@ -21,11 +30,11 @@
 
   /* ---------- 1. Configuration ---------------------------------- */
 
-  // ── Mapbox token ──
   mapboxgl.accessToken = 'pk.eyJ1IjoibmV3Y2hhbmFwb3JuIiwiYSI6ImNtbmkydWo3NTA4b3MydHBzNG51cTljd24ifQ.YRBkXAWNP5oubXSSObk9XQ';
 
   var JMB_CENTER = [-73.85, 40.635];
   var DEFAULT_ZOOM = 11.2;
+  var TOUR_ZOOM = 14.5;
 
   var JMB_BOUNDS = [
     [-74.10, 40.50],
@@ -37,28 +46,33 @@
     line:     './data/line_capitalproj_jmb_simp.geojson',
     polygon:  './data/polygon_capitalproj_jmb_simp.geojson',
     blocks:   './data/nycblock_sumwithin.geojson',
-    boundary: './data/jmb_boundary_shapesimp.json'
+    boundary: './data/jmb_boundary_shapesimp.json',
+    clusters: './data/cluster_desc_simp.geojson'
   };
 
   var AGENCY_COLORS = window.PopupContent.AGENCY_COLORS;
-  var BLOCK_RAMP = window.PopupContent.BLOCK_RAMP;
+  var BLOCK_RAMP    = window.PopupContent.BLOCK_RAMP;
 
   var SOURCE = {
     pts: 'src-pts', line: 'src-line', polygon: 'src-polygon',
-    blocks: 'src-blocks', boundary: 'src-boundary'
+    blocks: 'src-blocks', boundary: 'src-boundary',
+    clusters: 'src-clusters'
   };
   var LAYER = {
-    boundaryFill:    'lyr-boundary-fill',
-    boundaryLine:    'lyr-boundary-line',
-    blocksFill:      'lyr-blocks-fill',
-    blocksLine:      'lyr-blocks-line',
-    polygonFill:     'lyr-polygon-fill',
-    polygonLine:     'lyr-polygon-line',
-    line:            'lyr-line',
-    pts:             'lyr-pts'
+    boundaryFill:  'lyr-boundary-fill',
+    boundaryLine:  'lyr-boundary-line',
+    blocksFill:    'lyr-blocks-fill',
+    blocksLine:    'lyr-blocks-line',
+    polygonFill:   'lyr-polygon-fill',
+    polygonLine:   'lyr-polygon-line',
+    line:          'lyr-line',
+    pts:           'lyr-pts',
+    clusterHalo:   'lyr-cluster-halo',
+    clusters:      'lyr-clusters',
+    clusterLabels: 'lyr-cluster-labels'
   };
 
-  var hovered = { pts: null, line: null, polygon: null, blocks: null, boundary: null };
+  var hovered = { pts: null, line: null, polygon: null, blocks: null, boundary: null, clusters: null };
 
   /* ---------- 2. Map init --------------------------------------- */
 
@@ -127,42 +141,22 @@
     return years.length ? Math.max.apply(null, years) : null;
   }
 
-  /* ----------------------------------------------------------------
-     COORDINATE PROJECTION HELPERS
-     ----------------------------------------------------------------
-     ArcGIS Pro frequently exports GeoJSON in NY Long Island State
-     Plane (EPSG:2263, units = US survey feet). Mapbox GL strictly
-     requires WGS84 (lng/lat). If we detect state-plane coords we
-     convert them on the fly so the layer is visible.
-  ---------------------------------------------------------------- */
+  /* ----- EPSG:2263 → WGS84 reprojection (unchanged from prior patch) ----- */
 
   function looksLikeStatePlane(coord) {
-    // EPSG:2263 NY-LI: x ≈ 900,000–1,100,000 ft, y ≈ 100,000–300,000 ft
     return Math.abs(coord[0]) > 1000 && Math.abs(coord[1]) > 1000;
   }
-
-  // Approximate inverse Lambert Conformal Conic for EPSG:2263 → WGS84.
-  // Accurate to ~5–10 m, good enough for visualization.
   function statePlaneToWGS84(x, y) {
-    // Convert US survey feet to meters
     var x_m = x * 0.3048006096;
     var y_m = y * 0.3048006096;
-
-    // EPSG:2263 parameters
-    var lat0 = 40.16666666666666 * Math.PI / 180; // latitude of origin
-    var lng0 = -74.0;                              // central meridian
-    var lat1 = 40.66666666666666 * Math.PI / 180; // standard parallel 1
-    var lat2 = 41.03333333333333 * Math.PI / 180; // standard parallel 2
-    var x0 = 300000;                               // false easting (m)
-    var y0 = 0;                                    // false northing (m)
-    var a  = 6378137.0;                            // GRS80 semi-major axis
-    var f  = 1 / 298.257222101;
-    var e2 = 2 * f - f * f;
-    var e  = Math.sqrt(e2);
-
-    function m(lat) {
-      return Math.cos(lat) / Math.sqrt(1 - e2 * Math.sin(lat) * Math.sin(lat));
-    }
+    var lat0 = 40.16666666666666 * Math.PI / 180;
+    var lng0 = -74.0;
+    var lat1 = 40.66666666666666 * Math.PI / 180;
+    var lat2 = 41.03333333333333 * Math.PI / 180;
+    var x0 = 300000, y0 = 0;
+    var a = 6378137.0, f = 1 / 298.257222101;
+    var e2 = 2 * f - f * f, e = Math.sqrt(e2);
+    function m(lat) { return Math.cos(lat) / Math.sqrt(1 - e2 * Math.sin(lat) * Math.sin(lat)); }
     function t(lat) {
       var sinL = Math.sin(lat);
       return Math.tan(Math.PI / 4 - lat / 2) /
@@ -173,36 +167,28 @@
     var n  = (Math.log(m1) - Math.log(m2)) / (Math.log(t1) - Math.log(t2));
     var F  = m1 / (n * Math.pow(t1, n));
     var rho0 = a * F * Math.pow(t0, n);
-
-    var dx = x_m - x0;
-    var dy = rho0 - (y_m - y0);
+    var dx = x_m - x0, dy = rho0 - (y_m - y0);
     var rho = Math.sqrt(dx * dx + dy * dy) * (n < 0 ? -1 : 1);
     var theta = Math.atan2(dx, dy);
     var tNew = Math.pow(rho / (a * F), 1 / n);
-
     var lat = Math.PI / 2 - 2 * Math.atan(tNew);
     for (var i = 0; i < 8; i++) {
       var sinL = Math.sin(lat);
-      lat = Math.PI / 2 - 2 * Math.atan(
-        tNew * Math.pow((1 - e * sinL) / (1 + e * sinL), e / 2)
-      );
+      lat = Math.PI / 2 - 2 * Math.atan(tNew * Math.pow((1 - e * sinL) / (1 + e * sinL), e / 2));
     }
     var lng = theta / n + lng0 * Math.PI / 180;
     return [lng * 180 / Math.PI, lat * 180 / Math.PI];
   }
-
   function reprojectCoords(coords) {
     if (typeof coords[0] === 'number') {
       if (looksLikeStatePlane(coords)) {
         var p = statePlaneToWGS84(coords[0], coords[1]);
-        coords[0] = p[0];
-        coords[1] = p[1];
+        coords[0] = p[0]; coords[1] = p[1];
       }
       return;
     }
     for (var i = 0; i < coords.length; i++) reprojectCoords(coords[i]);
   }
-
   function reprojectIfNeeded(data, kind) {
     if (!data || !Array.isArray(data.features) || data.features.length === 0) return false;
     var sampleCoord = null;
@@ -214,63 +200,27 @@
       if (typeof c[0] === 'number' && typeof c[1] === 'number') sampleCoord = c;
     }
     if (!sampleCoord || !looksLikeStatePlane(sampleCoord)) return false;
-
-    console.warn('[map] ' + kind + ' appears to be in EPSG:2263 (NY State Plane); ' +
-                 'reprojecting to WGS84 on the fly. For best results re-export the ' +
-                 'GeoJSON from ArcGIS Pro using the WGS84 coordinate system.');
+    console.warn('[map] ' + kind + ' appears to be in EPSG:2263; reprojecting to WGS84.');
     data.features.forEach(function (f) {
       if (f.geometry && f.geometry.coordinates) reprojectCoords(f.geometry.coordinates);
     });
     return true;
   }
 
-  /* ---------- Diagnostic logging --------------------------------- */
   function logLayerDiagnostic(key, data) {
     var n = (data && data.features) ? data.features.length : 0;
-    if (!n) {
-      console.error('[map] layer "' + key + '" has 0 features. ' +
-                    'Check that ' + DATA_PATHS[key] + ' exists and is valid GeoJSON.');
-      return;
-    }
+    if (!n) { console.error('[map] layer "' + key + '" has 0 features.'); return; }
     var types = {};
-    var sampleCoord = null;
-    var sampleProps = data.features[0].properties;
     data.features.forEach(function (f) {
-      if (f.geometry) {
-        var t = f.geometry.type;
-        types[t] = (types[t] || 0) + 1;
-        if (!sampleCoord && f.geometry.coordinates) {
-          var c = f.geometry.coordinates;
-          while (Array.isArray(c) && Array.isArray(c[0])) c = c[0];
-          if (typeof c[0] === 'number') sampleCoord = c;
-        }
-      }
+      if (f.geometry) types[f.geometry.type] = (types[f.geometry.type] || 0) + 1;
     });
-    console.log('[map] ' + key + ': ' + n + ' features',
-                'types=' + JSON.stringify(types),
-                'sample coord=' + JSON.stringify(sampleCoord),
-                'sample props keys=' + Object.keys(sampleProps || {}).join(','));
+    console.log('[map] ' + key + ': ' + n + ' features  types=' + JSON.stringify(types));
   }
 
   function normalizeCapitalProjects(data, kind) {
     ensureFeatureIds(data, kind);
     reprojectIfNeeded(data, kind);
     logLayerDiagnostic(kind, data);
-
-    if (kind === 'pts' && data.features.length) {
-      var nonPoint = data.features.filter(function (f) {
-        return !f.geometry || (f.geometry.type !== 'Point' && f.geometry.type !== 'MultiPoint');
-      });
-      if (nonPoint.length === data.features.length) {
-        console.error('[map] pts file contains NO Point/MultiPoint geometries — ' +
-                      'a circle layer cannot render this. Geometry types found: ' +
-                      JSON.stringify(Array.from(new Set(data.features.map(function(f){return f.geometry && f.geometry.type;})))));
-      } else if (nonPoint.length > 0) {
-        console.warn('[map] pts file contains ' + nonPoint.length +
-                     ' non-point features that will not render in the circle layer.');
-      }
-    }
-
     data.features.forEach(function (f) {
       var p = f.properties || (f.properties = {});
       var agency = window.PopupContent.getAgency(p, kind);
@@ -301,10 +251,28 @@
     logLayerDiagnostic('boundary', data);
   }
 
+  function normalizeClusters(data) {
+    ensureFeatureIds(data, 'cluster');
+    reprojectIfNeeded(data, 'clusters');
+    logLayerDiagnostic('clusters', data);
+    data.features.sort(function (a, b) {
+      var ao = (a.properties && a.properties.OBJECTID) || 0;
+      var bo = (b.properties && b.properties.OBJECTID) || 0;
+      return ao - bo;
+    });
+    data.features.forEach(function (f, i) {
+      var p = f.properties || (f.properties = {});
+      p._index = i;
+      var agencies = window.PopupContent.parseAgencyList(p.agency_presented);
+      p._agencyCount = agencies.length;
+      p._isFourAgency = agencies.length >= 4 ? 1 : 0;
+    });
+  }
+
   /* ---------- 4. Add sources & layers --------------------------- */
 
   function buildLayers() {
-    /* Boundary */
+    /* Boundary (bottom) */
     map.addSource(SOURCE.boundary, { type: 'geojson', data: sources.boundary });
     map.addLayer({
       id: LAYER.boundaryFill, type: 'fill', source: SOURCE.boundary,
@@ -367,74 +335,100 @@
       }
     });
 
-    /* Point capital projects (TOP) */
+    /* Point capital projects */
     map.addSource(SOURCE.pts, { type: 'geojson', data: sources.pts });
     map.addLayer({
       id: LAYER.pts, type: 'circle', source: SOURCE.pts,
       paint: {
         'circle-radius': ['interpolate', ['linear'], ['zoom'],
-            11.2, 2, 13, 4, 16, 10
-          ],
-        // Defensive fallback in case the data file has no `_color`
-        'circle-color': [
-          'case',
-          ['has', '_color'], ['get', '_color'],
-          '#5b6770'
+          11.2, 2, 13, 4, 16, 10
         ],
+        'circle-color': ['case', ['has', '_color'], ['get', '_color'], '#5b6770'],
         'circle-opacity': ['interpolate', ['linear'], ['zoom'],
-            11.2, 0.2,
-            16, 0.8
-          ],
-        'circle-stroke-color': '#ffffff',
-        'circle-stroke-width': [
-          'case',
-          ['boolean', ['feature-state', 'hover'], false], 3, 0.5
+          11.2, 0.2, 16, 0.8
         ],
+        'circle-stroke-color': '#ffffff',
+        'circle-stroke-width': ['case', ['boolean', ['feature-state', 'hover'], false], 3, 0.5],
         'circle-stroke-opacity': 0.3
       }
     });
 
-    // After layers settle, see how many points are actually rendered.
+    /* Clusters (top) */
+    map.addSource(SOURCE.clusters, { type: 'geojson', data: sources.clusters });
+
+    map.addLayer({
+      id: LAYER.clusterHalo, type: 'circle', source: SOURCE.clusters,
+      layout: { 'visibility': 'none' },
+      paint: {
+        'circle-radius': [
+          'case',
+          ['boolean', ['feature-state', 'active'], false], 28,
+          ['boolean', ['feature-state', 'hover'], false], 20,
+          16
+        ],
+        'circle-color': '#c69744',
+        'circle-opacity': [
+          'case',
+          ['boolean', ['feature-state', 'active'], false], 0.35,
+          ['boolean', ['feature-state', 'hover'], false], 0.22,
+          0
+        ],
+        'circle-stroke-color': '#c69744',
+        'circle-stroke-width': [
+          'case',
+          ['boolean', ['feature-state', 'active'], false], 2,
+          ['boolean', ['feature-state', 'hover'], false], 1.5,
+          0
+        ],
+        'circle-stroke-opacity': 0.7
+      }
+    });
+
+    map.addLayer({
+      id: LAYER.clusters, type: 'circle', source: SOURCE.clusters,
+      layout: { 'visibility': 'none' },
+      paint: {
+        'circle-radius': [
+          'case',
+          ['boolean', ['feature-state', 'active'], false], 12,
+          ['boolean', ['feature-state', 'hover'], false], 10,
+          8
+        ],
+        'circle-color': [
+          'case',
+          ['==', ['get', '_isFourAgency'], 1], '#0c343b',
+          '#14525c'
+        ],
+        'circle-opacity': 1,
+        'circle-stroke-color': '#ffffff',
+        'circle-stroke-width': 2.5,
+        'circle-stroke-opacity': 1
+      }
+    });
+
+    map.addLayer({
+      id: LAYER.clusterLabels, type: 'symbol', source: SOURCE.clusters,
+      layout: {
+        'visibility': 'none',
+        'text-field': ['concat', ['to-string', ['+', ['get', '_index'], 1]]],
+        'text-font': ['DIN Pro Bold', 'Arial Unicode MS Bold'],
+        'text-size': 11,
+        'text-allow-overlap': true,
+        'text-ignore-placement': true
+      },
+      paint: {
+        'text-color': '#ffffff',
+        'text-halo-color': '#0c343b',
+        'text-halo-width': 0.5
+      }
+    });
+
     setTimeout(function () {
       try {
         var rendered = map.querySourceFeatures(SOURCE.pts);
-        var visible = map.queryRenderedFeatures({ layers: [LAYER.pts] });
-        console.log('[map] points: ' + rendered.length + ' in source, ' +
-                    visible.length + ' rendered in current viewport');
-        if (rendered.length > 0 && visible.length === 0) {
-          console.warn('[map] points exist in the source but none are in the current ' +
-                       'viewport. Auto-fitting bounds to point data…');
-          fitToPoints();
-        }
-      } catch (err) {
-        console.warn('[map] post-build diagnostic failed:', err);
-      }
+        console.log('[map] points: ' + rendered.length + ' in source');
+      } catch (err) { /* ignore */ }
     }, 800);
-  }
-
-  function fitToPoints() {
-    if (!sources.pts || !sources.pts.features || !sources.pts.features.length) return;
-    var bounds = new mapboxgl.LngLatBounds();
-    sources.pts.features.forEach(function (f) {
-      if (!f.geometry || !f.geometry.coordinates) return;
-      var c = f.geometry.coordinates;
-      if (typeof c[0] === 'number') {
-        if (isFinite(c[0]) && isFinite(c[1]) &&
-            Math.abs(c[0]) <= 180 && Math.abs(c[1]) <= 90) {
-          bounds.extend(c);
-        }
-      } else if (Array.isArray(c[0])) {
-        c.forEach(function (cc) {
-          if (Array.isArray(cc) && typeof cc[0] === 'number' &&
-              Math.abs(cc[0]) <= 180 && Math.abs(cc[1]) <= 90) {
-            bounds.extend(cc);
-          }
-        });
-      }
-    });
-    if (!bounds.isEmpty()) {
-      map.fitBounds(bounds, { padding: 60, maxZoom: 14, duration: 800 });
-    }
   }
 
   /* ---------- 5. Hover ----------------------------------------- */
@@ -442,6 +436,10 @@
   function setHoverState(layerKey, feature, on) {
     if (!feature || feature.id == null) return;
     map.setFeatureState({ source: SOURCE[layerKey], id: feature.id }, { hover: on });
+  }
+  function setActiveState(layerKey, feature, on) {
+    if (!feature || feature.id == null) return;
+    map.setFeatureState({ source: SOURCE[layerKey], id: feature.id }, { active: on });
   }
 
   function bindHover(layerKey, layerIds) {
@@ -455,6 +453,8 @@
           setHoverState(layerKey, f, true);
           hovered[layerKey] = f;
         }
+        // Don't overwrite the pinned cluster popup during a guided tour
+        if (popupPinned) return;
         var html = window.PopupContent[layerKey](f.properties || {});
         setPanel(html);
         followCursor(e);
@@ -465,17 +465,23 @@
           setHoverState(layerKey, hovered[layerKey], false);
           hovered[layerKey] = null;
         }
-        resetPanel();
+        if (!popupPinned) resetPanel();
         map.getCanvas().style.cursor = '';
       });
     });
   }
 
-  /* ---------- 6. Popup panel ----------------------------------- */
+  /* ---------- 6. Popup panel(s) -------------------------------- */
 
-  var panel = document.getElementById('popupPanel');
-  var content = document.getElementById('popupContent');
+  var panel       = document.getElementById('popupPanel');
+  var content     = document.getElementById('popupContent');
   var placeholder = document.getElementById('popupPlaceholder');
+  var popupPinned = false; // when true, hover events won't overwrite popup
+
+  // Secondary panel — for clicked capital projects during guided tour
+  var panel2       = document.getElementById('popupPanelSecondary');
+  var content2     = document.getElementById('popupContentSecondary');
+  var closeBtn2    = document.getElementById('popupSecondaryClose');
 
   function setPanel(html) {
     content.innerHTML = html;
@@ -485,13 +491,58 @@
   }
 
   function resetPanel() {
+    if (popupPinned) return;
     content.hidden = true;
     placeholder.hidden = false;
     panel.classList.remove('is-cursor');
+    panel.classList.remove('is-pinned');
     panel.classList.add('is-fixed');
     panel.classList.add('is-empty');
     panel.style.left = '';
     panel.style.top = '';
+  }
+
+  function pinPanel(html) {
+    popupPinned = true;
+    content.innerHTML = html;
+    content.hidden = false;
+    placeholder.hidden = true;
+    panel.classList.remove('is-cursor');
+    panel.classList.remove('is-fixed');
+    panel.classList.remove('is-empty');
+    panel.classList.add('is-pinned');
+    panel.style.left = '';
+    panel.style.top = '';
+  }
+
+  function unpinPanel() {
+    popupPinned = false;
+    panel.classList.remove('is-pinned');
+    resetPanel();
+  }
+
+  function setSecondaryPanel(html) {
+    if (!panel2 || !content2) return;
+    content2.innerHTML = html;
+    panel2.classList.remove('is-hidden');
+  }
+  function hideSecondaryPanel() {
+    if (!panel2) return;
+    panel2.classList.add('is-hidden');
+  }
+
+  function positionSecondaryPanel(evt) {
+    if (!panel2) return;
+    var ev = evt.originalEvent || evt;
+    var x = ev.clientX, y = ev.clientY;
+    var pw = panel2.offsetWidth || 340, ph = panel2.offsetHeight || 200, m = 16;
+    var left = x + 18, top = y + 18;
+    if (left + pw + m > window.innerWidth) left = x - pw - 18;
+    if (top + ph + m > window.innerHeight) top = y - ph - 18;
+    if (left < m) left = m;
+    if (top < m) top = m;
+    panel2.style.left = left + 'px';
+    panel2.style.top = top + 'px';
   }
 
   function followCursor(evt) {
@@ -504,6 +555,7 @@
     if (left < m) left = m;
     if (top < m) top = m;
     panel.classList.remove('is-fixed');
+    panel.classList.remove('is-pinned');
     panel.classList.add('is-cursor');
     panel.style.left = left + 'px';
     panel.style.top = top + 'px';
@@ -515,12 +567,13 @@
     if (layerId === LAYER.polygonFill || layerId === LAYER.polygonLine) return 'polygon';
     if (layerId === LAYER.blocksFill || layerId === LAYER.blocksLine) return 'blocks';
     if (layerId === LAYER.boundaryFill || layerId === LAYER.boundaryLine) return 'boundary';
+    if (layerId === LAYER.clusters || layerId === LAYER.clusterHalo || layerId === LAYER.clusterLabels) return 'clusters';
     return null;
   }
 
   /* ---------- 7. Data loading ---------------------------------- */
 
-  var sources = { pts: null, line: null, polygon: null, blocks: null, boundary: null };
+  var sources = { pts: null, line: null, polygon: null, blocks: null, boundary: null, clusters: null };
 
   function load(key, normalize) {
     return fetch(DATA_PATHS[key])
@@ -549,6 +602,7 @@
     if (key === 'polygon')  ids = [LAYER.polygonFill, LAYER.polygonLine];
     if (key === 'blocks')   ids = [LAYER.blocksFill, LAYER.blocksLine];
     if (key === 'boundary') ids = [LAYER.boundaryFill, LAYER.boundaryLine];
+    if (key === 'clusters') ids = [LAYER.clusterHalo, LAYER.clusters, LAYER.clusterLabels];
     ids.forEach(function (id) {
       if (map.getLayer(id)) {
         map.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none');
@@ -595,9 +649,7 @@
     }
     var minY = Math.min.apply(null, years);
     var maxY = Math.max.apply(null, years);
-    range.min = minY;
-    range.max = maxY;
-    range.value = maxY;
+    range.min = minY; range.max = maxY; range.value = maxY;
 
     ticksEl.innerHTML = '';
     var n = maxY - minY;
@@ -615,9 +667,6 @@
       if (allMode) {
         filterExpr = null;
       } else {
-        // Keep features whose _year is missing/null OR <= the slider year.
-        // The triple branch handles all three states defensively so a feature
-        // never silently disappears just because the date field was unparseable.
         filterExpr = ['any',
           ['!', ['has', '_year']],
           ['==', ['get', '_year'], null],
@@ -631,33 +680,22 @@
         }
       });
     }
-
     function updateReadout() {
       readout.textContent = allMode ? 'All years' : 'Through ' + range.value;
     }
-
     range.addEventListener('input', function () {
       allMode = false;
       applyFilter(parseInt(range.value, 10));
       updateReadout();
     });
-
     resetBtn.addEventListener('click', function () {
-      allMode = true;
-      range.value = maxY;
-      applyFilter(maxY);
-      updateReadout();
+      allMode = true; range.value = maxY; applyFilter(maxY); updateReadout();
     });
-
-    var playing = false;
-    var timer = null;
+    var playing = false, timer = null;
     function step() {
       var v = parseInt(range.value, 10);
       v = (v >= maxY) ? minY : v + 1;
-      range.value = v;
-      allMode = false;
-      applyFilter(v);
-      updateReadout();
+      range.value = v; allMode = false; applyFilter(v); updateReadout();
     }
     playBtn.addEventListener('click', function () {
       playing = !playing;
@@ -670,11 +708,10 @@
         if (timer) { clearInterval(timer); timer = null; }
       }
     });
-
     updateReadout();
   }
 
-  /* ---------- 10. Title block ---------------------------------- */
+  /* ---------- 10. Title block collapse ------------------------- */
 
   function setupTitleBlock() {
     var tb = document.getElementById('titleBlock');
@@ -700,27 +737,17 @@
     var agencyChips = document.querySelectorAll('.agency-chip');
     if (!agencyChips.length) return;
 
-    // Initialize: all agencies selected
     var selectedAgencies = { DEP: true, DOT: true, DDC: true, DPR: true };
 
     function applyAgencyFilter() {
       var agencies = Object.keys(selectedAgencies).filter(function (a) {
         return selectedAgencies[a];
       });
-
       var filterExpr;
-      if (agencies.length === 4) {
-        // All agencies selected — no filter needed
-        filterExpr = null;
-      } else if (agencies.length === 0) {
-        // No agencies selected — hide all
-        filterExpr = false;
-      } else {
-        // Some agencies selected — show only those
-        filterExpr = ['in', ['get', '_agency'], ['literal', agencies]];
-      }
+      if (agencies.length === 4)        filterExpr = null;
+      else if (agencies.length === 0)   filterExpr = false;
+      else                              filterExpr = ['in', ['get', '_agency'], ['literal', agencies]];
 
-      // Apply to all capital project layers
       [LAYER.pts, LAYER.line, LAYER.polygonFill, LAYER.polygonLine].forEach(function (id) {
         if (map.getLayer(id)) {
           if (filterExpr === null) map.setFilter(id, null);
@@ -732,9 +759,7 @@
     agencyChips.forEach(function (chip) {
       var agency = chip.getAttribute('data-agency');
       if (agency) {
-        // Mark as selected initially
         chip.classList.add('is-selected');
-
         chip.addEventListener('click', function (e) {
           e.preventDefault();
           e.stopPropagation();
@@ -746,7 +771,275 @@
     });
   }
 
-  /* ---------- 11. Boot ----------------------------------------- */
+  /* =============================================================
+     11. MODE MANAGEMENT — overview ↔ cluster
+     ============================================================= */
+
+  var currentMode = null; // 'overview' | 'cluster'
+  var welcomeOverlay = document.getElementById('welcomeOverlay');
+  var titleBlock     = document.getElementById('titleBlock');
+  var tourHeader     = document.getElementById('tourHeader');
+  var tourControl    = document.getElementById('tourControl');
+  var timeSlider     = document.getElementById('timeSlider');
+  var legendCluster  = document.getElementById('legendClusterGroup');
+  var legendBlocks   = document.getElementById('legendBlocksGroup');
+
+  function setMode(mode) {
+    if (mode === currentMode) return;
+    currentMode = mode;
+
+    // Always clear secondary popup on any mode change
+    hideSecondaryPanel();
+
+    if (mode !== 'cluster') {
+      Tour.stopAuto();
+      Tour.clearActive();
+      unpinPanel();
+    }
+
+    if (mode === 'overview') {
+      titleBlock.hidden = false;
+      tourHeader.hidden = true;
+      tourControl.hidden = true;
+      timeSlider.style.display = '';
+      legendCluster.hidden = true;
+      if (legendBlocks) legendBlocks.hidden = false;
+
+      toggleLayer('clusters', false);
+      ['pts', 'line', 'polygon', 'blocks', 'boundary'].forEach(function (k) {
+        var cb = document.querySelector('.layer-toggle input[data-layer="' + k + '"]');
+        var on = cb ? cb.checked : true;
+        toggleLayer(k, on);
+      });
+
+      map.easeTo({ center: JMB_CENTER, zoom: DEFAULT_ZOOM, duration: 800 });
+    }
+    else if (mode === 'cluster') {
+      titleBlock.hidden = true;
+      tourHeader.hidden = false;
+      tourControl.hidden = false;
+      timeSlider.style.display = 'none';
+      legendCluster.hidden = false;
+      if (legendBlocks) legendBlocks.hidden = true;
+
+      toggleLayer('clusters', true);
+      ['pts', 'line', 'polygon', 'boundary'].forEach(function (k) {
+        var cb = document.querySelector('.layer-toggle input[data-layer="' + k + '"]');
+        var on = cb ? cb.checked : true;
+        toggleLayer(k, on);
+      });
+      toggleLayer('blocks', false);
+
+      Tour.setSubmode('guided', { jumpTo: 0 });
+    }
+  }
+
+  function setupModeControls() {
+    document.querySelectorAll('.welcome-choice').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var mode = btn.getAttribute('data-mode');
+        hideWelcome();
+        setMode(mode);
+      });
+    });
+
+    var enterTourBtn = document.getElementById('enterTourBtn');
+    if (enterTourBtn) {
+      enterTourBtn.addEventListener('click', function () { setMode('cluster'); });
+    }
+
+    var backBtn = document.getElementById('backToOverviewBtn');
+    if (backBtn) {
+      backBtn.addEventListener('click', function () { setMode('overview'); });
+    }
+
+    document.querySelectorAll('.tour-mini-choice').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var sub = btn.getAttribute('data-tour-mode');
+        Tour.setSubmode(sub);
+      });
+    });
+
+    // Close button on the secondary popup
+    if (closeBtn2) {
+      closeBtn2.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        hideSecondaryPanel();
+      });
+    }
+  }
+
+  function hideWelcome() {
+    welcomeOverlay.classList.add('is-hidden');
+    setTimeout(function () { welcomeOverlay.style.display = 'none'; }, 350);
+  }
+
+  /* =============================================================
+     12. TOUR CONTROLLER
+     ============================================================= */
+
+  var Tour = (function () {
+    var idx = 0;
+    var submode = 'guided';  // 'guided' | 'explore'
+    var autoTimer = null;
+    var autoPlaying = false;
+    var activeFeature = null;
+
+    var counterEl    = document.getElementById('tourCounter');
+    var nameEl       = document.getElementById('tourName');
+    var progressEl   = document.getElementById('tourProgress');
+    var prevBtn      = document.getElementById('tourPrevBtn');
+    var nextBtn      = document.getElementById('tourNextBtn');
+    var autoBtn      = document.getElementById('tourAutoBtn');
+    var autoIcon     = document.getElementById('tourAutoIcon');
+    var guidedPanel  = document.getElementById('tourControlGuided');
+    var explorePanel = document.getElementById('tourControlExplore');
+
+    function features() {
+      return (sources.clusters && sources.clusters.features) ? sources.clusters.features : [];
+    }
+    function count() { return features().length; }
+
+    function buildProgress() {
+      if (!progressEl) return;
+      progressEl.innerHTML = '';
+      var n = count();
+      for (var i = 0; i < n; i++) {
+        var d = document.createElement('button');
+        d.className = 'tour-dot';
+        d.type = 'button';
+        d.setAttribute('data-idx', String(i));
+        d.setAttribute('aria-label', 'Go to cluster ' + (i + 1));
+        d.addEventListener('click', function (e) {
+          var k = parseInt(e.currentTarget.getAttribute('data-idx'), 10);
+          stopAuto();
+          go(k, { animate: true });
+        });
+        progressEl.appendChild(d);
+      }
+    }
+
+    function updateProgress() {
+      if (!progressEl) return;
+      progressEl.querySelectorAll('.tour-dot').forEach(function (el, i) {
+        el.classList.toggle('is-active', i === idx);
+        el.classList.toggle('is-past', i < idx);
+      });
+    }
+
+    function clearActive() {
+      if (activeFeature) {
+        setActiveState('clusters', activeFeature, false);
+        activeFeature = null;
+      }
+    }
+
+    function go(i, opts) {
+      var feats = features();
+      if (!feats.length) return;
+      idx = ((i % feats.length) + feats.length) % feats.length;
+      var f = feats[idx];
+
+      clearActive();
+      activeFeature = f;
+      setActiveState('clusters', f, true);
+
+      // Advancing the tour dismisses any open project-detail popup
+      hideSecondaryPanel();
+
+      var coords = f.geometry.coordinates;
+      var doAnimate = !opts || opts.animate !== false;
+      if (doAnimate) {
+        map.flyTo({
+          center: coords, zoom: TOUR_ZOOM,
+          speed: 0.8, curve: 1.4, essential: true
+        });
+      }
+
+      var name = (f.properties && f.properties.cluster_name) || ('Cluster ' + (idx + 1));
+      if (counterEl) counterEl.textContent = 'Cluster ' + (idx + 1) + ' of ' + feats.length;
+      if (nameEl)    nameEl.textContent = name;
+      updateProgress();
+
+      var html = window.PopupContent.clusters(f.properties || {}, { index: idx, total: feats.length });
+      pinPanel(html);
+    }
+
+    function next() { stopAutoIfManual(); go(idx + 1, { animate: true }); }
+    function prev() { stopAutoIfManual(); go(idx - 1, { animate: true }); }
+    function stopAutoIfManual() { /* manual nav doesn't stop auto by default */ }
+
+    function startAuto() {
+      if (autoPlaying) return;
+      autoPlaying = true;
+      if (autoIcon) autoIcon.textContent = '❚❚';
+      if (autoBtn)  autoBtn.classList.add('is-playing');
+      autoTimer = setInterval(function () { go(idx + 1, { animate: true }); }, 5000);
+    }
+    function stopAuto() {
+      autoPlaying = false;
+      if (autoIcon) autoIcon.textContent = '▶';
+      if (autoBtn)  autoBtn.classList.remove('is-playing');
+      if (autoTimer) { clearInterval(autoTimer); autoTimer = null; }
+    }
+    function toggleAuto() { autoPlaying ? stopAuto() : startAuto(); }
+
+    function setSubmode(s, opts) {
+      submode = s;
+      document.querySelectorAll('.tour-mini-choice').forEach(function (b) {
+        b.classList.toggle('is-active', b.getAttribute('data-tour-mode') === s);
+      });
+      if (s === 'guided') {
+        guidedPanel.hidden = false;
+        explorePanel.hidden = true;
+        if (opts && opts.jumpTo != null) idx = opts.jumpTo;
+        if (features().length) go(idx, { animate: true });
+      } else {
+        guidedPanel.hidden = true;
+        explorePanel.hidden = false;
+        stopAuto();
+        clearActive();
+        unpinPanel();
+        // Leaving guided mode also closes the secondary panel
+        hideSecondaryPanel();
+        map.easeTo({ center: JMB_CENTER, zoom: DEFAULT_ZOOM, duration: 700 });
+      }
+    }
+
+    function getSubmode() { return submode; }
+
+    function init() {
+      buildProgress();
+      if (prevBtn)  prevBtn.addEventListener('click', prev);
+      if (nextBtn)  nextBtn.addEventListener('click', next);
+      if (autoBtn)  autoBtn.addEventListener('click', toggleAuto);
+
+      document.addEventListener('keydown', function (e) {
+        if (currentMode !== 'cluster' || submode !== 'guided') return;
+        if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON')) return;
+        if (e.key === 'ArrowRight') { e.preventDefault(); next(); }
+        if (e.key === 'ArrowLeft')  { e.preventDefault(); prev(); }
+        if (e.key === ' ')          { e.preventDefault(); toggleAuto(); }
+      });
+    }
+
+    return {
+      init: init,
+      go: go,
+      next: next,
+      prev: prev,
+      stopAuto: stopAuto,
+      setSubmode: setSubmode,
+      getSubmode: getSubmode,
+      clearActive: clearActive,
+      current: function () { return idx; }
+    };
+  })();
+
+  /* =============================================================
+     13. Boot
+     ============================================================= */
 
   map.on('load', function () {
     Promise.all([
@@ -754,7 +1047,8 @@
       load('line',     function (d) { normalizeCapitalProjects(d, 'line'); }),
       load('polygon',  function (d) { normalizeCapitalProjects(d, 'polygon'); }),
       load('blocks',   normalizeBlocks),
-      load('boundary', normalizeBoundary)
+      load('boundary', normalizeBoundary),
+      load('clusters', normalizeClusters)
     ]).then(function () {
       buildLayers();
 
@@ -763,23 +1057,75 @@
       bindHover('polygon',  [LAYER.polygonFill]);
       bindHover('line',     [LAYER.line]);
       bindHover('pts',      [LAYER.pts]);
+      bindHover('clusters', [LAYER.clusters, LAYER.clusterHalo, LAYER.clusterLabels]);
 
       setupLayerToggles();
       setupTimeSlider();
       setupAgencyFilter();
       setupTitleBlock();
+      setupModeControls();
+      Tour.init();
 
+      /* ----- Map click handler -----------------------------------
+         In CLUSTER mode:
+           1. If user clicked a cluster marker → advance Tour to that cluster.
+           2. Else if a tour is in progress (popupPinned) AND user clicked a
+              capital infrastructure feature → show that feature's details
+              in the SECONDARY popup panel (bottom-right). The pinned
+              cluster popup stays put.
+           3. Else (explore submode, no pin) → behave like overview.
+         In OVERVIEW mode:
+           Standard popup behavior — show clicked feature in primary panel.
+      */
       map.on('click', function (e) {
+        if (currentMode === 'cluster') {
+          // (1) Cluster clicks always advance the tour
+          var clusterHits = map.queryRenderedFeatures(e.point, {
+            layers: [LAYER.clusters, LAYER.clusterHalo]
+          });
+          if (clusterHits.length) {
+            var cf = clusterHits[0];
+            var i = (cf.properties && cf.properties._index != null)
+              ? Number(cf.properties._index) : 0;
+            Tour.stopAuto();
+            Tour.go(i, { animate: true });
+            return;
+          }
+
+          // (2) During a guided tour, route capital project clicks to the
+          //     secondary panel so the pinned cluster popup is preserved.
+          if (popupPinned) {
+            var capitalHits = map.queryRenderedFeatures(e.point, {
+              layers: [LAYER.pts, LAYER.line, LAYER.polygonFill, LAYER.blocksFill]
+            });
+            if (capitalHits.length) {
+              var hit = capitalHits[0];
+              var key = getLayerKeyFromLayerId(hit.layer.id);
+              if (key) {
+                var html2 = window.PopupContent[key](hit.properties || {});
+                setSecondaryPanel(html2);
+                positionSecondaryPanel(e);
+              }
+              return;
+            }
+            // Clicked empty space during a guided tour — leave both
+            // panels alone (user may still be reading them).
+            return;
+          }
+        }
+
+        // OVERVIEW mode (or explore submode in cluster mode) — original behavior
         var hits = map.queryRenderedFeatures(e.point, {
           layers: [LAYER.pts, LAYER.line, LAYER.polygonFill, LAYER.blocksFill, LAYER.boundaryFill]
         });
-        if (!hits.length) { resetPanel(); return; }
+        if (!hits.length) {
+          if (!popupPinned) resetPanel();
+          return;
+        }
         var layerKey = getLayerKeyFromLayerId(hits[0].layer.id);
-        if (layerKey) {
+        if (layerKey && !popupPinned) {
           setPanel(window.PopupContent[layerKey](hits[0].properties || {}));
           followCursor(e);
-        } else {
-          resetPanel();
         }
       });
 
@@ -788,15 +1134,16 @@
     });
   });
 
-  map.getContainer().addEventListener('mouseleave', resetPanel);
+  map.getContainer().addEventListener('mouseleave', function () {
+    if (!popupPinned) resetPanel();
+  });
 
   map.on('error', function (e) {
     if (e && e.error && /access token|401|403/i.test(String(e.error.message || e.error))) {
       console.error('[map] Mapbox token error — replace mapboxgl.accessToken in js/map.js');
       var loader = document.getElementById('loader');
       if (loader) {
-        loader.querySelector('.loader__text').textContent =
-          'Mapbox token error — see js/map.js';
+        loader.querySelector('.loader__text').textContent = 'Mapbox token error — see js/map.js';
       }
     }
   });

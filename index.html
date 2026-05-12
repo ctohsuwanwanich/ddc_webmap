@@ -10,9 +10,7 @@
   <link href="https://api.mapbox.com/mapbox-gl-js/v3.20.0/mapbox-gl.css" rel="stylesheet">
   <script src="https://api.mapbox.com/mapbox-gl-js/v3.20.0/mapbox-gl.js"></script>
 
-  <!-- Editorial typography:
-       Source Serif 4 (display serif, water/civic feel)
-       + Inter Tight (workhorse sans for UI) -->
+  <!-- Editorial typography -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
@@ -29,7 +27,60 @@
   <div id="map" aria-label="Interactive map of Jamaica Bay capital projects"></div>
 
   <!-- =======================================================
-       HEADER / TITLE BLOCK (top-left)
+       WELCOME MODAL — first-touch introduction & mode choice
+       ======================================================= -->
+  <div class="welcome-overlay" id="welcomeOverlay" role="dialog" aria-modal="true" aria-labelledby="welcomeTitle">
+    <div class="welcome-modal">
+      <div class="welcome-modal__inner">
+        <div class="welcome-modal__eyebrow">
+          <span class="dot"></span>
+          <span>Town &amp; Gown NYC · DDC</span>
+        </div>
+
+        <h1 class="welcome-modal__title" id="welcomeTitle">
+          Opportunities for<br />
+          Integrated Wastewater<br />
+          Management
+        </h1>
+        <p class="welcome-modal__subtitle">Jamaica Bay, New York City</p>
+
+        <p class="welcome-modal__desc">
+          A spatial reading of capital infrastructure projects across the Jamaica
+          Bay watershed — work commissioned by <strong>DEP</strong>, <strong>DDC</strong>,
+          <strong>DOT</strong>, and <strong>DPR</strong>. The atlas surfaces where
+          agencies converge on the ground, and where integrated wastewater
+          management might consolidate effort, budget, and resilience benefit.
+        </p>
+
+        <p class="welcome-modal__prompt">Where would you like to begin?</p>
+
+        <div class="welcome-modal__choices">
+          <button class="welcome-choice" data-mode="overview" type="button">
+            <span class="welcome-choice__num">01</span>
+            <span class="welcome-choice__title">Overall project locations</span>
+            <span class="welcome-choice__desc">
+              See every capital project in the watershed — points, lines, polygons —
+              over a block-level concentration surface. Filter by year and toggle layers.
+            </span>
+            <span class="welcome-choice__arrow">→</span>
+          </button>
+
+          <button class="welcome-choice welcome-choice--accent" data-mode="cluster" type="button">
+            <span class="welcome-choice__num">02</span>
+            <span class="welcome-choice__title">Tour the inter-agency clusters</span>
+            <span class="welcome-choice__desc">
+              Walk through 11 sites in the watershed where DEP, DDC, DOT, and DPR
+              projects overlap — each with a brief opportunity description.
+            </span>
+            <span class="welcome-choice__arrow">→</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =======================================================
+       HEADER / TITLE BLOCK (top-left, overview mode)
        ======================================================= -->
   <header class="title-block" id="titleBlock">
     <div class="title-block__eyebrow">
@@ -40,14 +91,23 @@
     <p class="title-block__subtitle">Jamaica Bay, New York City</p>
     <p class="title-block__desc">
       A spatial reading of capital infrastructure projects across the Jamaica
-      Bay watershed of work commissioned by <strong>DEP</strong>, <strong>DDC</strong>, <strong>DOT</strong>, and
-      <strong>DPR</strong>. Where might integrated water management consolidate effort, budget, and resilience benefit?
+      Bay Long-Term Control Plan. Where might integrated water management consolidate effort, budget, and resilience benefit?
     </p>
 
     <div class="title-block__cta">
       <span class="cta-arrow">↳</span>
-      <span>Hover projects for details. Use the time slider to filter by completion year.</span>
+      <span>Hover projects for details. Use the time slider to filter by completion year. Filter by agency with agency names.</span>
     </div>
+
+    <!-- Mode-switch button: enter cluster tour from overview -->
+    <button class="title-block__tour-cta" id="enterTourBtn" type="button">
+      <span class="tour-cta__icon">◐</span>
+      <span class="tour-cta__label">
+        <span class="tour-cta__title">Start the cluster tour</span>
+        <span class="tour-cta__sub">11 inter-agency opportunity sites</span>
+      </span>
+      <span class="tour-cta__arrow">→</span>
+    </button>
 
     <button class="title-block__toggle" id="titleToggle" aria-label="Collapse panel">
       <span class="toggle-icon">—</span>
@@ -55,7 +115,46 @@
   </header>
 
   <!-- =======================================================
-       FLOATING POPUP PANEL (follows cursor)
+       CLUSTER TOUR HEADER (top-left, cluster mode)
+       ======================================================= -->
+  <header class="tour-header" id="tourHeader" hidden>
+    <div class="tour-header__eyebrow">
+      <span class="dot"></span>
+      <span>Mode 02 · Inter-agency clusters</span>
+    </div>
+    <h2 class="tour-header__title">Tour the clusters.</h2>
+    <p class="tour-header__desc">
+      Eleven sites in the Jamaica Bay watershed where two or more agencies have
+      capital work converging. Step through them in order, or click any marker
+      to explore on your own.
+    </p>
+
+    <div class="tour-header__choices">
+      <button class="tour-mini-choice is-active" data-tour-mode="guided" type="button">
+        Guided tour
+      </button>
+      <button class="tour-mini-choice" data-tour-mode="explore" type="button">
+        Explore freely
+      </button>
+    </div>
+
+    <!-- Call-to-action mirroring the overview's, adapted for tour interaction -->
+    <div class="tour-header__cta">
+      <span class="cta-arrow">↳</span>
+      <span>
+        Use <strong>Prev / Next</strong> or arrow keys to step through clusters;
+        <strong>spacebar</strong> auto-plays. Click any project on the map for its
+        details. Filter by agency with agency names.
+      </span>
+    </div>
+
+    <button class="tour-header__back" id="backToOverviewBtn" type="button">
+      ← Back to overall project locations
+    </button>
+  </header>
+
+  <!-- =======================================================
+       FLOATING POPUP PANEL — primary (hover or pinned cluster)
        ======================================================= -->
   <aside class="popup-panel is-fixed is-empty" id="popupPanel" aria-live="polite">
     <div class="popup-panel__inner">
@@ -72,7 +171,19 @@
   </aside>
 
   <!-- =======================================================
-       LEGEND / LAYER CONTROL (bottom-left)
+       SECONDARY POPUP PANEL — for clicked capital projects
+       during a guided tour. Lives alongside the pinned cluster
+       popup so the two reading contexts coexist.
+       ======================================================= -->
+  <aside class="popup-panel popup-panel--secondary is-hidden" id="popupPanelSecondary" aria-live="polite" aria-label="Selected capital project">
+    <div class="popup-panel__inner">
+      <button class="popup-panel__close" id="popupSecondaryClose" type="button" aria-label="Close project details">×</button>
+      <div class="popup-panel__content" id="popupContentSecondary"></div>
+    </div>
+  </aside>
+
+  <!-- =======================================================
+       LEGEND / LAYER CONTROL
        ======================================================= -->
   <section class="legend" id="legend">
     <header class="legend__header">
@@ -110,8 +221,20 @@
       </div>
     </div>
 
+    <!-- Cluster layer (visible only in cluster mode) -->
+    <div class="legend__group legend__group--cluster" id="legendClusterGroup" hidden>
+      <p class="legend__group-title">Inter-agency clusters</p>
+      <div class="legend__layers">
+        <label class="layer-toggle is-active">
+          <input type="checkbox" checked data-layer="clusters">
+          <span class="layer-toggle__swatch swatch-clusters"></span>
+          <span class="layer-toggle__label">Cluster sites <span class="layer-toggle__sub">(11 sites)</span></span>
+        </label>
+      </div>
+    </div>
+
     <!-- Block-level concentration -->
-    <div class="legend__group">
+    <div class="legend__group" id="legendBlocksGroup">
       <p class="legend__group-title">Capital Infrastructure Concentration · by block</p>
       <div class="legend__layers">
         <label class="layer-toggle is-active">
@@ -148,7 +271,7 @@
   </section>
 
   <!-- =======================================================
-       TIME SLIDER (bottom-center) — filter by completion date
+       TIME SLIDER (overview mode only)
        ======================================================= -->
   <section class="time-slider" id="timeSlider" aria-label="Filter projects by completion year">
     <header class="time-slider__header">
@@ -162,6 +285,41 @@
       </button>
       <input type="range" id="timeRange" step="1" />
       <div class="time-slider__ticks" id="timeTicks"></div>
+    </div>
+  </section>
+
+  <!-- =======================================================
+       TOUR CONTROL PANEL (cluster mode only)
+       ======================================================= -->
+  <section class="tour-control" id="tourControl" aria-label="Cluster tour controls" hidden>
+    <div class="tour-control__inner" id="tourControlGuided">
+      <div class="tour-control__head">
+        <span class="tour-control__counter" id="tourCounter">Cluster 1 of 11</span>
+        <span class="tour-control__name" id="tourName">—</span>
+      </div>
+
+      <!-- Progress dots -->
+      <div class="tour-control__progress" id="tourProgress"></div>
+
+      <div class="tour-control__buttons">
+        <button class="tour-btn tour-btn--prev" id="tourPrevBtn" type="button" aria-label="Previous cluster">
+          ← Prev
+        </button>
+        <button class="tour-btn tour-btn--play" id="tourAutoBtn" type="button" aria-label="Auto-play tour">
+          <span id="tourAutoIcon">▶</span>
+          <span>Auto</span>
+        </button>
+        <button class="tour-btn tour-btn--next" id="tourNextBtn" type="button" aria-label="Next cluster">
+          Next →
+        </button>
+      </div>
+    </div>
+
+    <div class="tour-control__inner tour-control__explore" id="tourControlExplore" hidden>
+      <p class="tour-explore__msg">
+        <span class="tour-explore__mark">◇</span>
+        Click any cluster marker on the map to read its description.
+      </p>
     </div>
   </section>
 
