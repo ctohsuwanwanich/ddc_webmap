@@ -10,27 +10,6 @@ on the ground — can be toured one by one.
 
 ---
 
-## What changed in this revision
-
-- **NYC blocks** are now a single muted backdrop. The five-class
-  concentration ramp and the block hover popup have been removed —
-  blocks now read as passive context, not a data layer to inspect.
-- **Capital projects** are controlled by a single **"Show all projects"**
-  toggle (the prior pts/line/polygon split is gone — geometry type isn't
-  analytically useful here).
-- **Hover state** is now strongly distinctive: project markers grow and
-  gain a white halo; lines thicken with a glow; polygons brighten and
-  jump to a white stroke. The tooltip's referent is always obvious.
-- **Agency pills** are now framed clearly as a filter, with a "↳ Filter
-  by managing agency" prompt and outlined-chip affordance.
-- **Timeline / playback** has been removed in both modes — the data
-  reads well without temporal animation.
-- **Cluster tour controls** (Prev / Next / progress dots / counter) now
-  live **inside** the pinned cluster popup. Only one panel to read.
-  No auto-play.
-
----
-
 ## The two modes
 
 When the page opens, a welcome panel offers two ways to enter:
