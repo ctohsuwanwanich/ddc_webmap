@@ -4,22 +4,30 @@
    =====================================================================
 
    Modes:
-     - 'overview' — original five-layer atlas with time slider
-     - 'cluster'  — same five layers + cluster overlay; guided or
-                    free-explore tour through 11 inter-agency sites
+     - 'overview' — atlas of all capital projects, filterable by agency,
+                    NYC blocks as quiet backdrop, Jamaica Bay boundary.
+     - 'cluster'  — same layers + cluster overlay; guided tour through
+                    11 inter-agency sites OR free explore.
 
-   During a guided cluster tour the cluster description popup is pinned
-   top-right. Clicks on any capital project (point / line / polygon /
-   block) populate a SECONDARY popup panel at the bottom-right so both
-   reading contexts coexist. The secondary panel has its own close
-   button and is auto-hidden when the tour advances.
+   v4 changes from prior version:
+     - Time slider / playback removed.
+     - NYC blocks render as a single muted backdrop color (no ramp).
+       No popup or hover on blocks — they are purely contextual.
+     - Three project-geometry toggles (pts / line / polygon) consolidated
+       into a single "Capital projects" toggle.
+     - Capital projects get a strongly distinctive hover state — thicker
+       stroke, brighter color, halo — so the user always knows what the
+       tooltip refers to.
+     - Tour controls (Prev / Next / progress dots / counter) live INSIDE
+       the pinned cluster info popup. The standalone tour-control bar
+       is gone. No auto-play.
 
    Layer order (top → bottom, visible to user):
      1. lyr-clusters (cluster mode only)
      2. lyr-pts
      3. lyr-line
      4. lyr-polygon-(fill|line)
-     5. lyr-blocks-(fill|line)
+     5. lyr-blocks (single flat color, no outline)
      6. lyr-boundary-(fill|line)
 
    Add layers BOTTOM → TOP so the visual stack matches the spec.
@@ -41,6 +49,10 @@
     [-73.65, 40.78]
   ];
 
+  // Backdrop color for NYC blocks — quiet, complementary to the project palette
+  var BLOCK_FILL = '#cfe1e3';     // muted teal-grey
+  var BLOCK_LINE = '#9fbcc0';     // slightly darker outline
+
   var DATA_PATHS = {
     pts:      './data/pts_capitalproj_jmb_simp.geojson',
     line:     './data/line_capitalproj_jmb_simp.geojson',
@@ -51,7 +63,6 @@
   };
 
   var AGENCY_COLORS = window.PopupContent.AGENCY_COLORS;
-  var BLOCK_RAMP    = window.PopupContent.BLOCK_RAMP;
 
   var SOURCE = {
     pts: 'src-pts', line: 'src-line', polygon: 'src-polygon',
@@ -72,7 +83,8 @@
     clusterLabels: 'lyr-cluster-labels'
   };
 
-  var hovered = { pts: null, line: null, polygon: null, blocks: null, boundary: null, clusters: null };
+  // Hover state tracking — note: blocks no longer hover.
+  var hovered = { pts: null, line: null, polygon: null, boundary: null, clusters: null };
 
   /* ---------- 2. Map init --------------------------------------- */
 
@@ -119,29 +131,7 @@
     });
   }
 
-  function parseYearField(value) {
-    if (!value) return null;
-    var str = String(value).trim();
-    if (!str) return null;
-    var d = new Date(str);
-    if (!isNaN(d.getTime())) return d.getFullYear();
-    var m = str.match(/(\d{4})/);
-    return m ? parseInt(m[1], 10) : null;
-  }
-
-  function getCompletionYear(props) {
-    var candidates = [
-      props.Construc_4, props.Construc_3, props.Construc_2, props.Construc_1,
-      props.DesignActu, props.DesignProj, props.DesignStar,
-      props.completion_date, props.COMPLETION_DATE, props.complete_date,
-      props.compl_date, props.end_date, props.completed, props.fy_complete,
-      props.date_const, props.time_const, props.mindate, props.maxdate
-    ];
-    var years = candidates.map(parseYearField).filter(function (y) { return y != null; });
-    return years.length ? Math.max.apply(null, years) : null;
-  }
-
-  /* ----- EPSG:2263 → WGS84 reprojection (unchanged from prior patch) ----- */
+  /* ----- EPSG:2263 → WGS84 reprojection (unchanged) ----- */
 
   function looksLikeStatePlane(coord) {
     return Math.abs(coord[0]) > 1000 && Math.abs(coord[1]) > 1000;
@@ -226,8 +216,6 @@
       var agency = window.PopupContent.getAgency(p, kind);
       p._agency = agency;
       p._color = AGENCY_COLORS[agency] || '#5b6770';
-      p._year = getCompletionYear(p);
-      p._isDEP = (agency === 'DEP') ? 1 : 0;
     });
   }
 
@@ -235,14 +223,7 @@
     ensureFeatureIds(data, 'block');
     reprojectIfNeeded(data, 'blocks');
     logLayerDiagnostic('blocks', data);
-    data.features.forEach(function (f) {
-      var p = f.properties || (f.properties = {});
-      var n = window.PopupContent.getProjCount(p);
-      p._count = n;
-      var band = window.PopupContent.classifyProjCount(n);
-      p._fill = band.color;
-      p._outline = (n >= 8) ? '#ffffff' : '#9e9e9e';
-    });
+    // No per-feature fill/outline — blocks are a uniform backdrop.
   }
 
   function normalizeBoundary(data) {
@@ -287,51 +268,81 @@
       }
     });
 
-    /* Blocks */
+    /* Blocks — single flat backdrop, no hover, no popup */
     map.addSource(SOURCE.blocks, { type: 'geojson', data: sources.blocks });
     map.addLayer({
       id: LAYER.blocksFill, type: 'fill', source: SOURCE.blocks,
       paint: {
-        'fill-color': ['get', '_fill'],
-        'fill-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 0.95, 0.78]
+        'fill-color': BLOCK_FILL,
+        'fill-opacity': 0.55
       }
     });
     map.addLayer({
       id: LAYER.blocksLine, type: 'line', source: SOURCE.blocks,
       paint: {
-        'line-color': ['get', '_outline'],
-        'line-width': ['case', ['boolean', ['feature-state', 'hover'], false], 1.2, 0.4]
+        'line-color': BLOCK_LINE,
+        'line-width': 0.3,
+        'line-opacity': 0.6
       }
     });
 
-    /* Polygon capital projects */
+    /* Polygon capital projects — strong hover state */
     map.addSource(SOURCE.polygon, { type: 'geojson', data: sources.polygon });
     map.addLayer({
       id: LAYER.polygonFill, type: 'fill', source: SOURCE.polygon,
       paint: {
         'fill-color': ['get', '_color'],
-        'fill-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 0.5, 0.22]
+        // Hover: opacity nearly doubles
+        'fill-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 0.7, 0.32]
       }
     });
     map.addLayer({
       id: LAYER.polygonLine, type: 'line', source: SOURCE.polygon,
       layout: { 'line-cap': 'round', 'line-join': 'round' },
       paint: {
-        'line-color': ['get', '_color'],
-        'line-width': ['case', ['boolean', ['feature-state', 'hover'], false], 2.5, 1.4],
-        'line-opacity': 0.95
+        // Hover: outline jumps to a bright clay accent so the polygon
+        // pops against its agency color.
+        'line-color': [
+          'case',
+          ['boolean', ['feature-state', 'hover'], false], '#ffffff',
+          ['get', '_color']
+        ],
+        'line-width': ['case', ['boolean', ['feature-state', 'hover'], false], 4, 1.6],
+        'line-opacity': 1
       }
     });
 
-    /* Line capital projects */
+    /* Line capital projects — emphatically thicker on hover */
     map.addSource(SOURCE.line, { type: 'geojson', data: sources.line });
+    // Wider invisible hit-target so thin lines are easy to hover
+    map.addLayer({
+      id: LAYER.line + '-hit', type: 'line', source: SOURCE.line,
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: {
+        'line-color': 'transparent',
+        'line-width': 14,
+        'line-opacity': 0
+      }
+    });
+    // Outer halo — only visible on hover
+    map.addLayer({
+      id: LAYER.line + '-halo', type: 'line', source: SOURCE.line,
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: {
+        'line-color': '#ffffff',
+        'line-width': ['case', ['boolean', ['feature-state', 'hover'], false], 9, 0],
+        'line-opacity': 0.85,
+        'line-blur': 1
+      }
+    });
+    // Main line
     map.addLayer({
       id: LAYER.line, type: 'line', source: SOURCE.line,
       layout: { 'line-cap': 'round', 'line-join': 'round' },
       paint: {
         'line-color': ['get', '_color'],
         'line-width': ['case', ['boolean', ['feature-state', 'hover'], false], 5, 2.4],
-        'line-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 1, 0.9]
+        'line-opacity': 1
       }
     });
 
@@ -348,7 +359,7 @@
           11.2, 0.2, 16, 0.8
         ],
         'circle-stroke-color': '#ffffff',
-        'circle-stroke-width': ['case', ['boolean', ['feature-state', 'hover'], false], 3, 0.5],
+        'circle-stroke-width': ['case', ['boolean', ['feature-state', 'hover'], false], 3, 0.25],
         'circle-stroke-opacity': 0.3
       }
     });
@@ -422,13 +433,6 @@
         'text-halo-width': 0.5
       }
     });
-
-    setTimeout(function () {
-      try {
-        var rendered = map.querySourceFeatures(SOURCE.pts);
-        console.log('[map] points: ' + rendered.length + ' in source');
-      } catch (err) { /* ignore */ }
-    }, 800);
   }
 
   /* ---------- 5. Hover ----------------------------------------- */
@@ -455,6 +459,7 @@
         }
         // Don't overwrite the pinned cluster popup during a guided tour
         if (popupPinned) return;
+        if (layerKey === 'boundary') return;
         var html = window.PopupContent[layerKey](f.properties || {});
         setPanel(html);
         followCursor(e);
@@ -561,11 +566,18 @@
     panel.style.top = top + 'px';
   }
 
+  function positionMiddleRight() {
+    panel.classList.remove('is-cursor');
+    panel.classList.remove('is-pinned');
+    panel.classList.add('is-fixed');
+    panel.style.left = '70%';
+    panel.style.top = '30%';
+  }
+
   function getLayerKeyFromLayerId(layerId) {
     if (layerId === LAYER.pts) return 'pts';
-    if (layerId === LAYER.line) return 'line';
+    if (layerId === LAYER.line || layerId === LAYER.line + '-hit' || layerId === LAYER.line + '-halo') return 'line';
     if (layerId === LAYER.polygonFill || layerId === LAYER.polygonLine) return 'polygon';
-    if (layerId === LAYER.blocksFill || layerId === LAYER.blocksLine) return 'blocks';
     if (layerId === LAYER.boundaryFill || layerId === LAYER.boundaryLine) return 'boundary';
     if (layerId === LAYER.clusters || layerId === LAYER.clusterHalo || layerId === LAYER.clusterLabels) return 'clusters';
     return null;
@@ -597,9 +609,11 @@
 
   function toggleLayer(key, visible) {
     var ids = [];
-    if (key === 'pts')      ids = [LAYER.pts];
-    if (key === 'line')     ids = [LAYER.line];
-    if (key === 'polygon')  ids = [LAYER.polygonFill, LAYER.polygonLine];
+    // 'projects' is the unified toggle for all 3 geometry types
+    if (key === 'projects') {
+      ids = [LAYER.pts, LAYER.line, LAYER.line + '-hit', LAYER.line + '-halo',
+             LAYER.polygonFill, LAYER.polygonLine];
+    }
     if (key === 'blocks')   ids = [LAYER.blocksFill, LAYER.blocksLine];
     if (key === 'boundary') ids = [LAYER.boundaryFill, LAYER.boundaryLine];
     if (key === 'clusters') ids = [LAYER.clusterHalo, LAYER.clusters, LAYER.clusterLabels];
@@ -611,107 +625,17 @@
   }
 
   function setupLayerToggles() {
-    var blockRamp = document.getElementById('blockRamp');
     document.querySelectorAll('.layer-toggle input[type="checkbox"]').forEach(function (cb) {
       cb.addEventListener('change', function () {
         var key = cb.getAttribute('data-layer');
         var on = cb.checked;
         cb.parentElement.classList.toggle('is-active', on);
         toggleLayer(key, on);
-        if (key === 'blocks' && blockRamp) {
-          blockRamp.style.display = on ? '' : 'none';
-        }
       });
     });
   }
 
-  /* ---------- 9. Time slider ----------------------------------- */
-
-  function setupTimeSlider() {
-    var range = document.getElementById('timeRange');
-    var readout = document.getElementById('timeReadout');
-    var resetBtn = document.getElementById('timeReset');
-    var playBtn = document.getElementById('timePlay');
-    var ticksEl = document.getElementById('timeTicks');
-    var playIcon = document.getElementById('playIcon');
-
-    var years = [];
-    ['pts', 'line', 'polygon'].forEach(function (k) {
-      if (!sources[k]) return;
-      sources[k].features.forEach(function (f) {
-        var y = f.properties && f.properties._year;
-        if (y) years.push(y);
-      });
-    });
-    if (!years.length) {
-      document.getElementById('timeSlider').style.display = 'none';
-      return;
-    }
-    var minY = Math.min.apply(null, years);
-    var maxY = Math.max.apply(null, years);
-    range.min = minY; range.max = maxY; range.value = maxY;
-
-    ticksEl.innerHTML = '';
-    var n = maxY - minY;
-    var stride = n > 8 ? 2 : 1;
-    for (var y = minY; y <= maxY; y += stride) {
-      var span = document.createElement('span');
-      span.textContent = "'" + String(y).slice(2);
-      ticksEl.appendChild(span);
-    }
-
-    var allMode = true;
-
-    function applyFilter(year) {
-      var filterExpr;
-      if (allMode) {
-        filterExpr = null;
-      } else {
-        filterExpr = ['any',
-          ['!', ['has', '_year']],
-          ['==', ['get', '_year'], null],
-          ['<=', ['to-number', ['get', '_year']], year]
-        ];
-      }
-      [LAYER.pts, LAYER.line, LAYER.polygonFill, LAYER.polygonLine].forEach(function (id) {
-        if (map.getLayer(id)) {
-          if (filterExpr === null) map.setFilter(id, null);
-          else map.setFilter(id, filterExpr);
-        }
-      });
-    }
-    function updateReadout() {
-      readout.textContent = allMode ? 'All years' : 'Through ' + range.value;
-    }
-    range.addEventListener('input', function () {
-      allMode = false;
-      applyFilter(parseInt(range.value, 10));
-      updateReadout();
-    });
-    resetBtn.addEventListener('click', function () {
-      allMode = true; range.value = maxY; applyFilter(maxY); updateReadout();
-    });
-    var playing = false, timer = null;
-    function step() {
-      var v = parseInt(range.value, 10);
-      v = (v >= maxY) ? minY : v + 1;
-      range.value = v; allMode = false; applyFilter(v); updateReadout();
-    }
-    playBtn.addEventListener('click', function () {
-      playing = !playing;
-      if (playing) {
-        playIcon.textContent = '❚❚';
-        if (allMode) { allMode = false; range.value = minY; applyFilter(minY); updateReadout(); }
-        timer = setInterval(step, 700);
-      } else {
-        playIcon.textContent = '▶';
-        if (timer) { clearInterval(timer); timer = null; }
-      }
-    });
-    updateReadout();
-  }
-
-  /* ---------- 10. Title block collapse ------------------------- */
+  /* ---------- 9. Title block collapse -------------------------- */
 
   function setupTitleBlock() {
     var tb = document.getElementById('titleBlock');
@@ -731,7 +655,7 @@
     });
   }
 
-  /* ---------- 10b. Agency filter ------------------------------ */
+  /* ---------- 9b. Agency filter ------------------------------- */
 
   function setupAgencyFilter() {
     var agencyChips = document.querySelectorAll('.agency-chip');
@@ -745,10 +669,11 @@
       });
       var filterExpr;
       if (agencies.length === 4)        filterExpr = null;
-      else if (agencies.length === 0)   filterExpr = false;
+      else if (agencies.length === 0)   filterExpr = ['==', ['get', '_agency'], '__NONE__']; // hide all
       else                              filterExpr = ['in', ['get', '_agency'], ['literal', agencies]];
 
-      [LAYER.pts, LAYER.line, LAYER.polygonFill, LAYER.polygonLine].forEach(function (id) {
+      [LAYER.pts, LAYER.line, LAYER.line + '-hit', LAYER.line + '-halo',
+       LAYER.polygonFill, LAYER.polygonLine].forEach(function (id) {
         if (map.getLayer(id)) {
           if (filterExpr === null) map.setFilter(id, null);
           else map.setFilter(id, filterExpr);
@@ -772,27 +697,22 @@
   }
 
   /* =============================================================
-     11. MODE MANAGEMENT — overview ↔ cluster
+     10. MODE MANAGEMENT — overview ↔ cluster
      ============================================================= */
 
   var currentMode = null; // 'overview' | 'cluster'
   var welcomeOverlay = document.getElementById('welcomeOverlay');
   var titleBlock     = document.getElementById('titleBlock');
   var tourHeader     = document.getElementById('tourHeader');
-  var tourControl    = document.getElementById('tourControl');
-  var timeSlider     = document.getElementById('timeSlider');
   var legendCluster  = document.getElementById('legendClusterGroup');
-  var legendBlocks   = document.getElementById('legendBlocksGroup');
 
   function setMode(mode) {
     if (mode === currentMode) return;
     currentMode = mode;
 
-    // Always clear secondary popup on any mode change
     hideSecondaryPanel();
 
     if (mode !== 'cluster') {
-      Tour.stopAuto();
       Tour.clearActive();
       unpinPanel();
     }
@@ -800,13 +720,10 @@
     if (mode === 'overview') {
       titleBlock.hidden = false;
       tourHeader.hidden = true;
-      tourControl.hidden = true;
-      timeSlider.style.display = '';
       legendCluster.hidden = true;
-      if (legendBlocks) legendBlocks.hidden = false;
 
       toggleLayer('clusters', false);
-      ['pts', 'line', 'polygon', 'blocks', 'boundary'].forEach(function (k) {
+      ['projects', 'blocks', 'boundary'].forEach(function (k) {
         var cb = document.querySelector('.layer-toggle input[data-layer="' + k + '"]');
         var on = cb ? cb.checked : true;
         toggleLayer(k, on);
@@ -817,18 +734,16 @@
     else if (mode === 'cluster') {
       titleBlock.hidden = true;
       tourHeader.hidden = false;
-      tourControl.hidden = false;
-      timeSlider.style.display = 'none';
       legendCluster.hidden = false;
-      if (legendBlocks) legendBlocks.hidden = true;
 
       toggleLayer('clusters', true);
-      ['pts', 'line', 'polygon', 'boundary'].forEach(function (k) {
+      // Blocks remain ON in cluster mode (per design feedback) — they
+      // give helpful watershed context as a quiet backdrop.
+      ['projects', 'blocks', 'boundary'].forEach(function (k) {
         var cb = document.querySelector('.layer-toggle input[data-layer="' + k + '"]');
         var on = cb ? cb.checked : true;
         toggleLayer(k, on);
       });
-      toggleLayer('blocks', false);
 
       Tour.setSubmode('guided', { jumpTo: 0 });
     }
@@ -860,7 +775,6 @@
       });
     });
 
-    // Close button on the secondary popup
     if (closeBtn2) {
       closeBtn2.addEventListener('click', function (e) {
         e.preventDefault();
@@ -876,25 +790,20 @@
   }
 
   /* =============================================================
-     12. TOUR CONTROLLER
-     ============================================================= */
+    11. TOUR CONTROLLER
+    Controls live inside the pinned cluster popup.
+    No auto-play. No spacebar shortcut.
+    ============================================================= */
 
   var Tour = (function () {
     var idx = 0;
     var submode = 'guided';  // 'guided' | 'explore'
-    var autoTimer = null;
-    var autoPlaying = false;
     var activeFeature = null;
 
-    var counterEl    = document.getElementById('tourCounter');
-    var nameEl       = document.getElementById('tourName');
-    var progressEl   = document.getElementById('tourProgress');
-    var prevBtn      = document.getElementById('tourPrevBtn');
-    var nextBtn      = document.getElementById('tourNextBtn');
-    var autoBtn      = document.getElementById('tourAutoBtn');
-    var autoIcon     = document.getElementById('tourAutoIcon');
-    var guidedPanel  = document.getElementById('tourControlGuided');
-    var explorePanel = document.getElementById('tourControlExplore');
+    var counterEl = document.getElementById('tourCounter');
+    var progressEl = document.getElementById('tourProgress');
+    var prevBtn = document.getElementById('tourPrevBtn');
+    var nextBtn = document.getElementById('tourNextBtn');
 
     function features() {
       return (sources.clusters && sources.clusters.features) ? sources.clusters.features : [];
@@ -913,7 +822,6 @@
         d.setAttribute('aria-label', 'Go to cluster ' + (i + 1));
         d.addEventListener('click', function (e) {
           var k = parseInt(e.currentTarget.getAttribute('data-idx'), 10);
-          stopAuto();
           go(k, { animate: true });
         });
         progressEl.appendChild(d);
@@ -945,7 +853,6 @@
       activeFeature = f;
       setActiveState('clusters', f, true);
 
-      // Advancing the tour dismisses any open project-detail popup
       hideSecondaryPanel();
 
       var coords = f.geometry.coordinates;
@@ -957,33 +864,15 @@
         });
       }
 
-      var name = (f.properties && f.properties.cluster_name) || ('Cluster ' + (idx + 1));
-      if (counterEl) counterEl.textContent = 'Cluster ' + (idx + 1) + ' of ' + feats.length;
-      if (nameEl)    nameEl.textContent = name;
+      if (counterEl) counterEl.textContent = (idx + 1) + ' / ' + feats.length;
       updateProgress();
 
       var html = window.PopupContent.clusters(f.properties || {}, { index: idx, total: feats.length });
       pinPanel(html);
     }
 
-    function next() { stopAutoIfManual(); go(idx + 1, { animate: true }); }
-    function prev() { stopAutoIfManual(); go(idx - 1, { animate: true }); }
-    function stopAutoIfManual() { /* manual nav doesn't stop auto by default */ }
-
-    function startAuto() {
-      if (autoPlaying) return;
-      autoPlaying = true;
-      if (autoIcon) autoIcon.textContent = '❚❚';
-      if (autoBtn)  autoBtn.classList.add('is-playing');
-      autoTimer = setInterval(function () { go(idx + 1, { animate: true }); }, 5000);
-    }
-    function stopAuto() {
-      autoPlaying = false;
-      if (autoIcon) autoIcon.textContent = '▶';
-      if (autoBtn)  autoBtn.classList.remove('is-playing');
-      if (autoTimer) { clearInterval(autoTimer); autoTimer = null; }
-    }
-    function toggleAuto() { autoPlaying ? stopAuto() : startAuto(); }
+    function next() { go(idx + 1, { animate: true }); }
+    function prev() { go(idx - 1, { animate: true }); }
 
     function setSubmode(s, opts) {
       submode = s;
@@ -991,17 +880,12 @@
         b.classList.toggle('is-active', b.getAttribute('data-tour-mode') === s);
       });
       if (s === 'guided') {
-        guidedPanel.hidden = false;
-        explorePanel.hidden = true;
         if (opts && opts.jumpTo != null) idx = opts.jumpTo;
         if (features().length) go(idx, { animate: true });
       } else {
-        guidedPanel.hidden = true;
-        explorePanel.hidden = false;
-        stopAuto();
+        // Explore: unpin, clear active highlight, frame whole watershed.
         clearActive();
         unpinPanel();
-        // Leaving guided mode also closes the secondary panel
         hideSecondaryPanel();
         map.easeTo({ center: JMB_CENTER, zoom: DEFAULT_ZOOM, duration: 700 });
       }
@@ -1011,16 +895,15 @@
 
     function init() {
       buildProgress();
-      if (prevBtn)  prevBtn.addEventListener('click', prev);
-      if (nextBtn)  nextBtn.addEventListener('click', next);
-      if (autoBtn)  autoBtn.addEventListener('click', toggleAuto);
+      if (prevBtn) prevBtn.addEventListener('click', prev);
+      if (nextBtn) nextBtn.addEventListener('click', next);
 
+      // Arrow keys for guided tour navigation
       document.addEventListener('keydown', function (e) {
         if (currentMode !== 'cluster' || submode !== 'guided') return;
         if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON')) return;
         if (e.key === 'ArrowRight') { e.preventDefault(); next(); }
-        if (e.key === 'ArrowLeft')  { e.preventDefault(); prev(); }
-        if (e.key === ' ')          { e.preventDefault(); toggleAuto(); }
+        if (e.key === 'ArrowLeft') { e.preventDefault(); prev(); }
       });
     }
 
@@ -1029,7 +912,6 @@
       go: go,
       next: next,
       prev: prev,
-      stopAuto: stopAuto,
       setSubmode: setSubmode,
       getSubmode: getSubmode,
       clearActive: clearActive,
@@ -1038,7 +920,7 @@
   })();
 
   /* =============================================================
-     13. Boot
+     12. Boot
      ============================================================= */
 
   map.on('load', function () {
@@ -1052,34 +934,30 @@
     ]).then(function () {
       buildLayers();
 
-      bindHover('boundary', [LAYER.boundaryFill]);
-      bindHover('blocks',   [LAYER.blocksFill]);
+      // NOTE: no hover binding for blocks — they are passive backdrop.
+      // NOTE: no hover binding for boundary — popup removed.
       bindHover('polygon',  [LAYER.polygonFill]);
-      bindHover('line',     [LAYER.line]);
+      // For lines, use the wide invisible hit-target layer for hover events
+      bindHover('line',     [LAYER.line, LAYER.line + '-hit']);
       bindHover('pts',      [LAYER.pts]);
       bindHover('clusters', [LAYER.clusters, LAYER.clusterHalo, LAYER.clusterLabels]);
 
       setupLayerToggles();
-      setupTimeSlider();
       setupAgencyFilter();
       setupTitleBlock();
       setupModeControls();
       Tour.init();
 
-      /* ----- Map click handler -----------------------------------
-         In CLUSTER mode:
-           1. If user clicked a cluster marker → advance Tour to that cluster.
-           2. Else if a tour is in progress (popupPinned) AND user clicked a
-              capital infrastructure feature → show that feature's details
-              in the SECONDARY popup panel (bottom-right). The pinned
-              cluster popup stays put.
+      /* ----- Click handler -----------------------------------
+         OVERVIEW: standard popup behavior (also follows cursor).
+         CLUSTER:
+           1. Cluster marker hit → advance Tour.
+           2. Else if popupPinned (guided tour) → secondary popup
+              shows the clicked project's details.
            3. Else (explore submode, no pin) → behave like overview.
-         In OVERVIEW mode:
-           Standard popup behavior — show clicked feature in primary panel.
       */
       map.on('click', function (e) {
         if (currentMode === 'cluster') {
-          // (1) Cluster clicks always advance the tour
           var clusterHits = map.queryRenderedFeatures(e.point, {
             layers: [LAYER.clusters, LAYER.clusterHalo]
           });
@@ -1087,16 +965,16 @@
             var cf = clusterHits[0];
             var i = (cf.properties && cf.properties._index != null)
               ? Number(cf.properties._index) : 0;
-            Tour.stopAuto();
             Tour.go(i, { animate: true });
             return;
           }
 
-          // (2) During a guided tour, route capital project clicks to the
-          //     secondary panel so the pinned cluster popup is preserved.
           if (popupPinned) {
+            // Capital project clicks during a guided tour → secondary panel.
+            // NOTE: blocks are excluded — they have no popup now.
             var capitalHits = map.queryRenderedFeatures(e.point, {
-              layers: [LAYER.pts, LAYER.line, LAYER.polygonFill, LAYER.blocksFill]
+              layers: [LAYER.pts, LAYER.line, LAYER.line + '-hit',
+                       LAYER.polygonFill]
             });
             if (capitalHits.length) {
               var hit = capitalHits[0];
@@ -1108,15 +986,14 @@
               }
               return;
             }
-            // Clicked empty space during a guided tour — leave both
-            // panels alone (user may still be reading them).
             return;
           }
         }
 
-        // OVERVIEW mode (or explore submode in cluster mode) — original behavior
+        // OVERVIEW (or explore submode)
         var hits = map.queryRenderedFeatures(e.point, {
-          layers: [LAYER.pts, LAYER.line, LAYER.polygonFill, LAYER.blocksFill, LAYER.boundaryFill]
+          layers: [LAYER.pts, LAYER.line, LAYER.line + '-hit',
+                   LAYER.polygonFill]
         });
         if (!hits.length) {
           if (!popupPinned) resetPanel();
@@ -1125,7 +1002,7 @@
         var layerKey = getLayerKeyFromLayerId(hits[0].layer.id);
         if (layerKey && !popupPinned) {
           setPanel(window.PopupContent[layerKey](hits[0].properties || {}));
-          followCursor(e);
+          positionMiddleRight();
         }
       });
 

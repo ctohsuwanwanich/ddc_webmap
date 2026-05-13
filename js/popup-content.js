@@ -1,6 +1,6 @@
 /* =====================================================================
    popup-content.js
-   Builds the HTML content shown in the floating popup panel.
+   Builds the HTML content shown in the floating popup panel(s).
    ===================================================================== */
 
 (function () {
@@ -13,24 +13,6 @@
     DDC: '#5b6770',
     DPR: '#5a8a3a'
   };
-
-  // Block concentration ramp (matches the hex codes in spec)
-  var BLOCK_RAMP = ['#F0F9E8', '#BAE4BC', '#7BCCC4', '#43A2CA', '#9868AC'];
-  var BLOCK_BANDS = [
-    { min: 0,       max: 0.415,    label: 'No Capital Infrastructure Projects',  band: 'Very low',   color: BLOCK_RAMP[0] },
-    { min: 0.415,   max: 3.288,    label: 'A Couple of Projects',                band: 'Low',        color: BLOCK_RAMP[1] },
-    { min: 3.288,   max: 23.16,    label: 'Some Projects',                       band: 'Moderate',   color: BLOCK_RAMP[2] },
-    { min: 23.16,   max: 160.586,  label: 'High Concentration of Projects',      band: 'High',       color: BLOCK_RAMP[3] },
-    { min: 160.586, max: Infinity, label: 'Very High Concentration of Projects', band: 'Very high',  color: BLOCK_RAMP[4] }
-  ];
-
-  function classifyProjCount(n) {
-    n = Number(n) || 0;
-    for (var i = 0; i < BLOCK_BANDS.length; i++) {
-      if (n >= BLOCK_BANDS[i].min && n <= BLOCK_BANDS[i].max) return BLOCK_BANDS[i];
-    }
-    return BLOCK_BANDS[0];
-  }
 
   function escapeHtml(s) {
     if (s == null) return '';
@@ -110,15 +92,7 @@
            props.amount || props.cost || null;
   }
 
-  function getProjCount(props) {
-    var v = props.Point_Count || props.POINT_COUNT || 0;
-    return Number(v) || 0;
-  }
-
-  /* ---------- Cluster helpers ----------
-     Parse "DPR, DEP, DOT, DDC" into ordered array of known agency codes.
-     Order convention in popup: DEP first (wastewater focus), then DDC, DOT, DPR.
-  */
+  /* ---------- Cluster helpers ---------- */
   var AGENCY_DISPLAY_ORDER = ['DEP', 'DDC', 'DOT', 'DPR'];
 
   function parseAgencyList(raw) {
@@ -127,7 +101,6 @@
       .split(/[,;/]/)
       .map(function (s) { return s.trim().toUpperCase(); })
       .filter(function (s) { return AGENCY_COLORS.hasOwnProperty(s); });
-    // Deduplicate while preserving the display order
     var seen = {};
     tokens.forEach(function (t) { seen[t] = true; });
     return AGENCY_DISPLAY_ORDER.filter(function (a) { return seen[a]; });
@@ -180,42 +153,13 @@
   window.PopupContent = {
 
     AGENCY_COLORS: AGENCY_COLORS,
-    BLOCK_RAMP: BLOCK_RAMP,
-    BLOCK_BANDS: BLOCK_BANDS,
-
-    classifyProjCount: classifyProjCount,
     getAgency: getAgency,
     getCompletionDate: getCompletionDate,
-    getProjCount: getProjCount,
     parseAgencyList: parseAgencyList,
 
     pts:     function (props) { return capitalProjectTemplate(props, 'point',   'pts'); },
     line:    function (props) { return capitalProjectTemplate(props, 'line',    'line'); },
     polygon: function (props) { return capitalProjectTemplate(props, 'polygon', 'polygon'); },
-
-    blocks: function (props) {
-      var n = getProjCount(props);
-      var band = classifyProjCount(n);
-      var textColor = (n >= 8) ? '#fff' : '#1a2a33';
-      var borderColor = (n >= 8) ? '#fff' : '#bdbdbd';
-      var concentrationText = (band.band === 'Very high')
-        ? 'Very high concentration'
-        : n + '<small>projects on this block</small>';
-      return '' +
-        '<p class="pop-eyebrow">NYC block · concentration</p>' +
-        '<p class="pop-title">Capital infrastructure concentration</p>' +
-        '<p class="pop-concentration">' + concentrationText + '</p>' +
-        '<div class="pop-grid">' +
-          '<div class="pop-row">' +
-            '<span class="k">Class</span>' +
-            '<span class="v"><span class="pop-band" style="background:' + band.color + ';color:' + textColor + ';border-color:' + borderColor + '">' + escapeHtml(band.band) + '</span></span>' +
-          '</div>' +
-          '<div class="pop-row">' +
-            '<span class="k">Range</span>' +
-            '<span class="v">' + escapeHtml(band.label) + '</span>' +
-          '</div>' +
-        '</div>';
-    },
 
     boundary: function (props) {
       var name = escapeHtml(props.name || 'Jamaica Bay Study Area');

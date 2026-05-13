@@ -59,8 +59,8 @@
             <span class="welcome-choice__num">01</span>
             <span class="welcome-choice__title">Overall project locations</span>
             <span class="welcome-choice__desc">
-              See every capital project in the watershed — points, lines, polygons —
-              over a block-level concentration surface. Filter by year and toggle layers.
+              Browse every capital project across the watershed, with on-the-fly
+              filtering by managing agency.
             </span>
             <span class="welcome-choice__arrow">→</span>
           </button>
@@ -91,12 +91,18 @@
     <p class="title-block__subtitle">Jamaica Bay, New York City</p>
     <p class="title-block__desc">
       A spatial reading of capital infrastructure projects across the Jamaica
-      Bay Long-Term Control Plan. Where might integrated water management consolidate effort, budget, and resilience benefit?
+      Bay Long-Term Control Plan. Where might integrated water management
+      consolidate effort, budget, and resilience benefit?
     </p>
 
+    <!-- CTA — clearly tells the user about filtering with agency pills -->
     <div class="title-block__cta">
       <span class="cta-arrow">↳</span>
-      <span>Hover projects for details. Use the time slider to filter by completion year. Filter by agency with agency names.</span>
+      <span>
+        <strong>Hover</strong> any project for its details.
+        <strong>Tap an agency pill</strong> in the legend below to filter by
+        managing agency.
+      </span>
     </div>
 
     <!-- Mode-switch button: enter cluster tour from overview -->
@@ -138,13 +144,14 @@
       </button>
     </div>
 
-    <!-- Call-to-action mirroring the overview's, adapted for tour interaction -->
+    <!-- CTA — calls out cluster controls AND agency-pill filtering -->
     <div class="tour-header__cta">
       <span class="cta-arrow">↳</span>
-      <span>
-        Use <strong>Prev / Next</strong> or arrow keys to step through clusters;
-        <strong>spacebar</strong> auto-plays. Click any project on the map for its
-        details. Filter by agency with agency names.
+      <span id="tourCtaText">
+        Use <strong>Prev / Next</strong> below the cluster description, or the
+        <strong>← →</strong> keys, to step through clusters. Click any project on
+        the map for its details. <strong>Tap an agency pill</strong> in the legend
+        to filter by managing agency.
       </span>
     </div>
 
@@ -155,6 +162,7 @@
 
   <!-- =======================================================
        FLOATING POPUP PANEL — primary (hover or pinned cluster)
+       Tour controls now live INSIDE this panel when pinned.
        ======================================================= -->
   <aside class="popup-panel is-fixed is-empty" id="popupPanel" aria-live="polite">
     <div class="popup-panel__inner">
@@ -162,18 +170,32 @@
         <div class="placeholder-mark">◐</div>
         <p class="placeholder-title">Investigate the watershed</p>
         <p class="placeholder-text">
-          Hover any project marker, line, or block to read about agency,
-          completion date, and infrastructure concentration.
+          Hover any project marker, line, or polygon to read about its agency
+          and completion date.
         </p>
       </div>
       <div class="popup-panel__content" id="popupContent" hidden></div>
+
+      <!-- Tour controls — only visible while the popup is pinned (guided tour).
+           CSS toggles their display via .popup-panel.is-pinned. -->
+      <div class="popup-panel__tour-controls" id="popupTourControls">
+        <div class="tour-control__progress" id="tourProgress"></div>
+        <div class="tour-control__buttons">
+          <button class="tour-btn tour-btn--prev" id="tourPrevBtn" type="button" aria-label="Previous cluster">
+            ← Prev
+          </button>
+          <span class="tour-control__counter" id="tourCounter">1 / 11</span>
+          <button class="tour-btn tour-btn--next" id="tourNextBtn" type="button" aria-label="Next cluster">
+            Next →
+          </button>
+        </div>
+      </div>
     </div>
   </aside>
 
   <!-- =======================================================
-       SECONDARY POPUP PANEL — for clicked capital projects
-       during a guided tour. Lives alongside the pinned cluster
-       popup so the two reading contexts coexist.
+       SECONDARY POPUP PANEL — clicked capital projects during
+       the guided tour (so the cluster popup stays pinned)
        ======================================================= -->
   <aside class="popup-panel popup-panel--secondary is-hidden" id="popupPanelSecondary" aria-live="polite" aria-label="Selected capital project">
     <div class="popup-panel__inner">
@@ -188,31 +210,22 @@
   <section class="legend" id="legend">
     <header class="legend__header">
       <h2>Legend</h2>
-      <span class="legend__hint">check to toggle</span>
+      <span class="legend__hint"> check to toggle</span>
     </header>
 
-    <!-- Capital project layers, classified by managing agency -->
+    <!-- One unified capital-projects toggle (replaces three by geometry) -->
     <div class="legend__group">
-      <p class="legend__group-title">Capital Projects · by managing agency</p>
+      <p class="legend__group-title">Capital Projects</p>
       <div class="legend__layers">
         <label class="layer-toggle is-active">
-          <input type="checkbox" checked data-layer="pts">
-          <span class="layer-toggle__swatch swatch-points"></span>
-          <span class="layer-toggle__label">Points</span>
-        </label>
-        <label class="layer-toggle is-active">
-          <input type="checkbox" checked data-layer="line">
-          <span class="layer-toggle__swatch swatch-lines"></span>
-          <span class="layer-toggle__label">Lines</span>
-        </label>
-        <label class="layer-toggle is-active">
-          <input type="checkbox" checked data-layer="polygon">
-          <span class="layer-toggle__swatch swatch-polygons"></span>
-          <span class="layer-toggle__label">Polygons</span>
+          <input type="checkbox" checked data-layer="projects">
+          <span class="layer-toggle__swatch swatch-projects"></span>
+          <span class="layer-toggle__label">Show all projects</span>
         </label>
       </div>
 
-      <!-- Agency color key -->
+      <!-- Agency filter — now framed as a filter, not just a key -->
+      <p class="legend__filter-prompt">Filter by managing agency:</p>
       <div class="legend__agencies">
         <span class="agency-chip" data-agency="DEP"><i style="background:#1d4e89"></i>DEP</span>
         <span class="agency-chip" data-agency="DOT"><i style="background:#c97b1f"></i>DOT</span>
@@ -228,98 +241,25 @@
         <label class="layer-toggle is-active">
           <input type="checkbox" checked data-layer="clusters">
           <span class="layer-toggle__swatch swatch-clusters"></span>
-          <span class="layer-toggle__label">Cluster sites <span class="layer-toggle__sub">(11 sites)</span></span>
+          <span class="layer-toggle__label">Cluster sites <span class="layer-toggle__sub">(11)</span></span>
         </label>
       </div>
     </div>
 
-    <!-- Block-level concentration -->
+    <!-- NYC blocks — single-color backdrop, no popup -->
     <div class="legend__group" id="legendBlocksGroup">
-      <p class="legend__group-title">Capital Infrastructure Concentration · by block</p>
+      <p class="legend__group-title">Context</p>
       <div class="legend__layers">
         <label class="layer-toggle is-active">
           <input type="checkbox" checked data-layer="blocks">
-          <span class="layer-toggle__swatch swatch-blocks-gradient"></span>
-          <span class="layer-toggle__label">Project count (block)</span>
+          <span class="layer-toggle__swatch swatch-blocks"></span>
+          <span class="layer-toggle__label">NYC blocks <span class="layer-toggle__sub">backdrop</span></span>
         </label>
-      </div>
-      <!-- Concentration ramp -->
-      <div class="legend__ramp" id="blockRamp">
-        <div class="ramp-bar">
-          <span class="ramp-step" style="background:#F0F9E8;border-color:#bdbdbd"></span>
-          <span class="ramp-step" style="background:#BAE4BC;border-color:#bdbdbd"></span>
-          <span class="ramp-step" style="background:#7BCCC4;border-color:#bdbdbd"></span>
-          <span class="ramp-step" style="background:#43A2CA;color:#fff;border-color:#fff"></span>
-          <span class="ramp-step" style="background:#9868AC;color:#fff;border-color:#fff"></span>
-        </div>
-        <div class="ramp-axis">
-          <span>fewer projects</span>
-          <span>greater concentration</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- Boundary (always visible) -->
-    <div class="legend__group">
-      <div class="legend__layers">
         <div class="layer-toggle is-active layer-toggle--static">
           <span class="layer-toggle__swatch swatch-boundary"></span>
           <span class="layer-toggle__label">Jamaica Bay study area</span>
         </div>
       </div>
-    </div>
-  </section>
-
-  <!-- =======================================================
-       TIME SLIDER (overview mode only)
-       ======================================================= -->
-  <section class="time-slider" id="timeSlider" aria-label="Filter projects by completion year">
-    <header class="time-slider__header">
-      <h3>Project Completion Year</h3>
-      <span class="time-slider__readout" id="timeReadout">All years</span>
-    </header>
-    <div class="time-slider__controls">
-      <button class="time-slider__btn" id="timeReset" type="button">All</button>
-      <button class="time-slider__btn time-slider__btn--play" id="timePlay" type="button" aria-label="Play through years">
-        <span id="playIcon">▶</span>
-      </button>
-      <input type="range" id="timeRange" step="1" />
-      <div class="time-slider__ticks" id="timeTicks"></div>
-    </div>
-  </section>
-
-  <!-- =======================================================
-       TOUR CONTROL PANEL (cluster mode only)
-       ======================================================= -->
-  <section class="tour-control" id="tourControl" aria-label="Cluster tour controls" hidden>
-    <div class="tour-control__inner" id="tourControlGuided">
-      <div class="tour-control__head">
-        <span class="tour-control__counter" id="tourCounter">Cluster 1 of 11</span>
-        <span class="tour-control__name" id="tourName">—</span>
-      </div>
-
-      <!-- Progress dots -->
-      <div class="tour-control__progress" id="tourProgress"></div>
-
-      <div class="tour-control__buttons">
-        <button class="tour-btn tour-btn--prev" id="tourPrevBtn" type="button" aria-label="Previous cluster">
-          ← Prev
-        </button>
-        <button class="tour-btn tour-btn--play" id="tourAutoBtn" type="button" aria-label="Auto-play tour">
-          <span id="tourAutoIcon">▶</span>
-          <span>Auto</span>
-        </button>
-        <button class="tour-btn tour-btn--next" id="tourNextBtn" type="button" aria-label="Next cluster">
-          Next →
-        </button>
-      </div>
-    </div>
-
-    <div class="tour-control__inner tour-control__explore" id="tourControlExplore" hidden>
-      <p class="tour-explore__msg">
-        <span class="tour-explore__mark">◇</span>
-        Click any cluster marker on the map to read its description.
-      </p>
     </div>
   </section>
 
