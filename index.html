@@ -120,45 +120,48 @@
     </button>
   </header>
 
-  <!-- =======================================================
-       CLUSTER TOUR HEADER (top-left, cluster mode)
-       ======================================================= -->
-  <header class="tour-header" id="tourHeader" hidden>
-    <div class="tour-header__eyebrow">
-      <span class="dot"></span>
-      <span>Mode 02 · Inter-agency clusters</span>
-    </div>
-    <h2 class="tour-header__title">Tour the clusters.</h2>
-    <p class="tour-header__desc">
-      Eleven sites in the Jamaica Bay watershed where two or more agencies have
-      capital work converging. Step through them in order, or click any marker
-      to explore on your own.
-    </p>
+ <!-- =======================================================
+      CLUSTER TOUR HEADER (top-left, cluster mode)
+      ======================================================= -->
+ <header class="tour-header" id="tourHeader" hidden>
+   <div class="tour-header__eyebrow">
+     <span class="dot"></span>
+     <span>Mode 02 · Inter-agency clusters</span>
+   </div>
+   <h2 class="tour-header__title">Tour the clusters.</h2>
+   <p class="tour-header__desc">
+     Eleven sites in the Jamaica Bay watershed where two or more agencies have
+     capital work converging. Step through them in order, or click any marker
+     to explore on your own.
+   </p>
 
-    <div class="tour-header__choices">
-      <button class="tour-mini-choice is-active" data-tour-mode="guided" type="button">
-        Guided tour
-      </button>
-      <button class="tour-mini-choice" data-tour-mode="explore" type="button">
-        Explore freely
-      </button>
-    </div>
 
-    <!-- CTA — calls out cluster controls AND agency-pill filtering -->
-    <div class="tour-header__cta">
-      <span class="cta-arrow">↳</span>
-      <span id="tourCtaText">
-        Use <strong>Prev / Next</strong> below the cluster description, or the
-        <strong>← →</strong> keys, to step through clusters. Click any project on
-        the map for its details. <strong>Tap an agency pill</strong> in the legend
-        to filter by managing agency.
-      </span>
-    </div>
+   <div class="tour-header__choices">
+     <button class="tour-mini-choice is-active" data-tour-mode="guided" type="button">
+       Guided tour
+     </button>
+     <button class="tour-mini-choice" data-tour-mode="explore" type="button">
+       All clusters
+     </button>
+   </div>
 
-    <button class="tour-header__back" id="backToOverviewBtn" type="button">
-      ← Back to overall project locations
-    </button>
-  </header>
+
+   <!-- CTA — calls out cluster controls AND agency-pill filtering.
+        Sentences are conditionally hidden:
+          .cta-when-guided  → hidden in explore submode
+          .cta-when-projects → hidden when the projects toggle is off -->
+   <div class="tour-header__cta">
+     <span class="cta-arrow">↳</span>
+     <span id="tourCtaText">
+       <span class="cta-when-guided">Use <strong>Prev / Next</strong> below the cluster description, or the <strong>← →</strong> keys, to step through clusters. </span><span>Click any project on the map for its details. <strong>Tap an agency pill</strong> in the legend to filter by managing agency.</span>
+     </span>
+   </div>
+
+
+   <button class="tour-header__back" id="backToOverviewBtn" type="button">
+     ← Back to overall project locations
+   </button>
+ </header>
 
   <!-- =======================================================
        FLOATING POPUP PANEL — primary (hover or pinned cluster)
@@ -216,12 +219,11 @@
     <!-- One unified capital-projects toggle (replaces three by geometry) -->
     <div class="legend__group">
       <p class="legend__group-title">Capital Projects</p>
-      <div class="legend__layers">
-        <label class="layer-toggle is-active">
-          <input type="checkbox" checked data-layer="projects">
-          <span class="layer-toggle__swatch swatch-projects"></span>
-          <span class="layer-toggle__label">Show all projects</span>
-        </label>
+      <div class="layer-toggle is-active layer-toggle--locked">
+        <span class="layer-toggle__swatch swatch-projects"></span>
+        <span class="layer-toggle__label">
+          Capital projects
+        </span>
       </div>
 
       <!-- Agency filter — now framed as a filter, not just a key -->

@@ -323,6 +323,13 @@ body {
 .title-block__cta strong { color: var(--teal-deep); font-weight: 700; }
 .cta-arrow { font-size: 14px; line-height: 1; flex-shrink: 0; color: var(--clay); }
 
+/* ---------- Conditional CTA fragments ----------
+   These spans are hidden when their precondition is unmet:
+   - .cta-when-guided   → hidden if `body.tour-explore-mode` (explore submode)
+   Trailing whitespace inside each span keeps spacing intact when shown.
+*/
+body.tour-explore-mode .cta-when-guided { display: none; }
+
 /* Tour CTA — switches to cluster mode */
 .title-block__tour-cta {
   display: grid;

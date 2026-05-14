@@ -631,6 +631,11 @@
         var on = cb.checked;
         cb.parentElement.classList.toggle('is-active', on);
         toggleLayer(key, on);
+        if (key === 'projects') {
+          // Body class drives conditional hiding of the empty popup
+          // placeholder and the hover/click-for-details CTA fragments.
+          document.body.classList.toggle('projects-hidden', !on);
+        }
       });
     });
   }
@@ -879,6 +884,9 @@
       document.querySelectorAll('.tour-mini-choice').forEach(function (b) {
         b.classList.toggle('is-active', b.getAttribute('data-tour-mode') === s);
       });
+      // Hide the "Use Prev / Next..." sentence in the tour CTA when in
+      // explore submode (no prev/next buttons are visible there).
+      document.body.classList.toggle('tour-explore-mode', s === 'explore');
       if (s === 'guided') {
         if (opts && opts.jumpTo != null) idx = opts.jumpTo;
         if (features().length) go(idx, { animate: true });
